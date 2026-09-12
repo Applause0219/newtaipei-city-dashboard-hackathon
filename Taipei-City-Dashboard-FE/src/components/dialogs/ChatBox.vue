@@ -310,6 +310,13 @@ watch(
 	},
 	{ deep: true },
 );
+
+// 側邊欄形式需要面板自己有個關閉入口——展開時視線在右側，
+// 不會回到左下角那顆浮動按鈕去找。
+//
+// 刻意宣告在 script 區塊最後：另一條 AI 生成分支改的是前半段，
+// 兩邊 merge 時不會落在同一個 hunk。
+const emit = defineEmits(["close"]);
 </script>
 
 <template>
@@ -317,6 +324,13 @@ watch(
     <!-- 標題 -->
     <div class="header">
       <h3>臺北城市儀表板小幫手</h3>
+      <button
+        class="close-btn"
+        aria-label="關閉小幫手"
+        @click="emit('close')"
+      >
+        ×
+      </button>
     </div>
 
     <!-- 聊天區 -->
@@ -519,12 +533,36 @@ $radius-20: 20px;
 		padding: 1rem;
 		background: $panel-bg;
 		border-bottom: 3px solid $border-color;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
 
 		h3 {
 			font-size: 18px;
 			font-weight: 700;
 			color: $white;
 			margin: 0;
+		}
+
+		.close-btn {
+			flex-shrink: 0;
+			width: 28px;
+			height: 28px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			font-size: 22px;
+			line-height: 1;
+			color: $white;
+			border-radius: 50%;
+			opacity: 0.7;
+			transition: opacity 0.2s, background-color 0.2s;
+
+			&:hover {
+				opacity: 1;
+				background-color: rgba(255, 255, 255, 0.15);
+			}
 		}
 	}
 
