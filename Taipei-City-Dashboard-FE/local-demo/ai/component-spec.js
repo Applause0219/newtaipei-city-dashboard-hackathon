@@ -73,6 +73,21 @@ export function validateSpec(spec, catalog) {
 	const has = (c) => cols.includes(c);
 	const typeOf = (c) => meta[c]?.type;
 
+	/** filter 物件允許的鍵。多一個都不行——多的那個一定是模型以為有效但其實被忽略的。 */
+	const FILTER_KEYS = new Set(["column", "eq", "ne", "gte", "lte"]);
+	const checkFilter = (f, where) => {
+		if (!f.column) push(`${where} 缺 column`);
+		else if (!has(f.column)) push(`欄位不存在：${spec.table}.${f.column}`);
+		const ops = ["eq", "ne", "gte", "lte"].filter((k) => k in f);
+		if (!ops.length) push(`${where} 需要 eq / ne / gte / lte 其中之一`);
+		for (const k of Object.keys(f)) {
+			if (!FILTER_KEYS.has(k)) push(`${where} 有不支援的欄位 "${k}"，會被忽略`);
+		}
+		for (const k of ["gte", "lte"]) {
+			if (k in f && !Number.isFinite(Number(f[k]))) push(`${where}.${k} 必須是數字`);
+		}
+	};
+
 	// city 必須與資料表相符。
 	//
 	// 這關是實測補的：問「比較雙北各區的青年人口」，模型產出
@@ -97,10 +112,19 @@ export function validateSpec(spec, catalog) {
 			if (!s.label) push(`series[${i}] 缺 label`);
 			if (!s.column) push(`series[${i}] 缺 column`);
 			else if (!has(s.column)) push(`欄位不存在或未說明：${spec.table}.${s.column}`);
-			if (s.filter) {
-				if (!s.filter.column) push(`series[${i}].filter 缺 column`);
-				else if (!has(s.filter.column)) push(`欄位不存在：${spec.table}.${s.filter.column}`);
-				if (!("eq" in s.filter) && !("ne" in s.filter)) push(`series[${i}].filter 需要 eq 或 ne`);
+			if (s.filter) checkFilter(s.filter, `series[${i}].filter`);
+			// 模型常把 age_lower / age_upper 直接寫在 series 上——那不是 spec 的一部分，
+			// 會被靜默忽略，於是標籤寫「15-35 歲」但算的是全年齡。
+			// 實測 agent 就這樣把板橋的 119,834 畫成 547,794。
+			// 年齡範圍要寫成 filters: [{column:"age_lower",gte:15},{column:"age_upper",lte:35}]
+			const SERIES_KEYS = new Set(["label", "column", "filter"]);
+			for (const k of Object.keys(s)) {
+				if (!SERIES_KEYS.has(k)) {
+					push(`series[${i}] 有不支援的欄位 "${k}"，會被忽略。`
+						+ (/^age_/.test(k)
+							? `年齡範圍請寫成 filters: [{"column":"age_lower","gte":15},{"column":"age_upper","lte":35}]`
+							: `只接受 label / column / filter。`));
+				}
 			}
 		});
 
@@ -192,18 +216,33 @@ export function validateSpec(spec, catalog) {
 			const genderFilter = [...(spec.filters || []),
 			                      ...spec.series.map((sr) => sr.filter).filter(Boolean)]
 				.find((f) => f.column === "gender" && "eq" in f);
-			if (genderFilter && indFilters.length && catalog.youthDatasets) {
+			if (indFilters.length && catalog.youthDatasets) {
 				for (const f of indFilters) {
 					// 找出這個指標所屬的資料集（可能多個，歧義的情況上面已擋）
-					for (const [ds, d] of Object.entries(catalog.youthDatasets)) {
-						const meta2 = d.indicators?.[f.eq];
-						if (!meta2?.genders) continue;
-						if (!meta2.genders.includes(genderFilter.eq)) {
-							push(`指標 ${f.eq} 沒有 gender="${genderFilter.eq}" 的資料`
-								+ `（實際只有 ${meta2.genders.join("、")}）。`
-								+ `篩下去會得到空結果。不分性別時請直接不要篩 gender。`);
-						}
-						break;
+					let genders = null;
+					for (const d of Object.values(catalog.youthDatasets)) {
+						const m2 = d.indicators?.[f.eq];
+						if (m2?.genders) { genders = m2.genders; break; }
+					}
+					if (!genders) continue;
+
+					const hasTotal = genders.includes("total");
+					const hasSplit = genders.includes("male") || genders.includes("female");
+
+					if (genderFilter && !genders.includes(genderFilter.eq)) {
+						// 篩一個不存在的值 → 空結果
+						push(`指標 ${f.eq} 沒有 gender="${genderFilter.eq}" 的資料`
+							+ `（實際只有 ${genders.join("、")}）。篩下去會得到空結果。`);
+					} else if (!genderFilter && hasTotal && hasSplit && spec.aggregate === "sum") {
+						// 同時有 total 與 male/female 時不篩就會**重複計算兩倍**。
+						//
+						// 實測 population_count：不篩 gender 板橋是 1,095,588，
+						// 篩 total 是 547,794——正好兩倍，因為 total 那一列
+						// 本來就等於 male + female，三個加起來等於算了兩遍。
+						// 144 個指標裡有 58 個踩得到這個。
+						push(`指標 ${f.eq} 同時有 total 與 ${genders.filter((g) => g !== "total").join("、")} 三種列，`
+							+ `total 本身就等於其他的加總。不篩 gender 直接 sum 會**重複計算兩倍**。`
+							+ `要全體請篩 gender="total"，要分性別請用 series[].filter 分別指定。`);
 					}
 				}
 			}
@@ -246,11 +285,7 @@ export function validateSpec(spec, catalog) {
 		}
 	}
 
-	(spec.filters || []).forEach((f, i) => {
-		if (!f.column) push(`filters[${i}] 缺 column`);
-		else if (!has(f.column)) push(`欄位不存在：${spec.table}.${f.column}`);
-		if (!("eq" in f) && !("ne" in f)) push(`filters[${i}] 需要 eq 或 ne`);
-	});
+	(spec.filters || []).forEach((f, i) => checkFilter(f, `filters[${i}]`));
 
 	if (spec.latest_by && !has(spec.latest_by)) push(`欄位不存在：${spec.table}.${spec.latest_by}`);
 
@@ -273,6 +308,10 @@ export function whereClause(spec, extra = []) {
 		const col = quoteIdent(f.column);
 		if ("eq" in f) conds.push(`${col} = ${lit(f.eq)}`);
 		if ("ne" in f) conds.push(`${col} <> ${lit(f.ne)}`);
+		// 範圍條件。年齡範圍是這個專案的核心（藍圖 §7），沒有它就只能算全年齡。
+		// 數值一律轉成 Number 再插進 SQL，不走 lit()——避免把數字包成字串。
+		if ("gte" in f) conds.push(`${col} >= ${Number(f.gte)}`);
+		if ("lte" in f) conds.push(`${col} <= ${Number(f.lte)}`);
 	}
 	for (const v of spec.x?.exclude || []) {
 		conds.push(`${quoteIdent(spec.x.column)} <> ${lit(v)}`);

@@ -86,6 +86,13 @@ const RULES = `規則：
    ratio（比率、指數、百分比）**不可以 sum**——比率加總沒有數學意義。
    只能 avg / min / max。
 
+16. 年齡範圍寫進 filters，用 gte / lte：
+
+     {"column": "age_lower", "gte": 18}, {"column": "age_upper", "lte": 35}
+
+   **不要**把 age_lower / age_upper 寫在 series 裡——那不是 spec 的欄位，
+   會被忽略，結果是標籤寫「18-35 歲」但算的是全年齡。驗證器會擋下。
+
 只輸出 JSON，不要有其他文字，不要包在程式碼區塊裡。`;
 
 export function buildSpecPrompt(catalog, question) {

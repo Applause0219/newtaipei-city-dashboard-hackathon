@@ -117,6 +117,41 @@ function createApiMiddleware() {
 						return send({ data: r, status: r.ok ? "success" : "error" }, "generate:" + (r.stage || "ok"));
 					}
 
+					// ── 0a-2. Agent：模型自己決定查什麼、查幾次 ──
+					//
+					// 與 0a 的差別是「誰決定步驟」：
+					//   0a  一次呼叫 → ComponentSpec → SQL → 圖。可重現。
+					//   0a-2 模型拿到工具，自己搜尋、檢視、查數、建組件。會探索。
+					//
+					// 兩條都留著，因為可重現性是我們對數字的信用來源，
+					// 不能為了看起來聰明而放棄。agent 決定的是「做什麼分析」，
+					// 數字一律由 build_component 走 0a 那條管線算。
+					//
+					// 回傳含 trace（工具呼叫序列），前端用它畫藍圖 §25 的漏斗。
+					if (url.startsWith("/api/agent") && req.method === "POST") {
+						const body = await readBody(req);
+						const question = (body.question || "").trim();
+						if (!question) {
+							res.statusCode = 400;
+							return send({ status: "error", message: "缺少 question" }, "agent");
+						}
+						console.log("[agent] " + question);
+						try {
+							const { runAgent } = await import("./ai/agent.js");
+							const r = await runAgent(question, {
+								onEvent: (e) => {
+									if (e.type === "tool") console.log(`[agent]   → ${e.name}  ${e.summary}`);
+								},
+							});
+							console.log(`[agent] → ${r.trace.length} 次工具、${r.components.length} 個組件、${(r.ms / 1000).toFixed(1)}s`);
+							return send({ data: r, status: "success" }, "agent");
+						} catch (err) {
+							console.log("[agent] ✗ " + err.message);
+							res.statusCode = 500;
+							return send({ status: "error", message: String(err.message).slice(0, 300) }, "agent");
+						}
+					}
+
 					// ── 0b. Insight Pipeline：不等使用者問，主動找出值得注意的現象 ──
 					//
 					// 與 0a 的差別是「誰決定要看什麼」：

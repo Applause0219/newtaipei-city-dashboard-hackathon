@@ -243,13 +243,16 @@ tables:
         values: ["total", "male", "female", "other", "unknown"]
         neutral_value: "total"
         note: >-
-          ⚠ 不要預設篩 total。70 個資料集裡有 21 個根本沒有 total 列——
-          生育率只有 female（那本來就是婦女指標）、結婚只有 male／female、
-          消費是 null。篩下去會得到空結果，而 SQL 不會報錯。
+          ⚠ 篩不篩、篩什麼，**一律看該指標的 genders 清單**（在下方指標清單裡）。
+          兩種情況會出錯，而且 SQL 都不會報錯：
 
-          正確做法：去看該指標在「youth_fact 可用的指標」清單裡的 genders。
-          清單有寫 total 才可以篩 total；沒寫就**直接不要放 gender 條件**，
-          讓 aggregate 把各性別加總起來。
+          情況一：清單有 total ——**必須**篩 gender="total"。
+          那些指標同時有 total 與 male／female 三種列，而 total 本身就等於
+          男女相加。不篩直接 sum 會重複計算**兩倍**。144 個指標有 58 個是這樣。
+
+          情況二：清單沒有 total（例如生育率只有 female、結婚只有
+          male／female）——**不要**放 gender 條件，讓 aggregate 自己加總。
+          硬篩 total 會得到空結果。
 
           要做男女對照時，用 series[].filter 分別指定 male／female，
           不要放進最外層 filters。

@@ -72,6 +72,87 @@ ok("不篩 gender 就該通過", validateSpec(marriageOk, cat).ok,
 	(validateSpec(marriageOk, cat).errors || []).join("；"));
 
 // ────────────────────────────────────────────────────────────
+group("D. 同時有 total 與 male/female 的指標，不篩 gender 會重複計算兩倍");
+
+const popBase = {
+	index: "t", name: "測試", city: "metrotaipei", table: "youth_fact_named",
+	query_type: "two_d", x: { column: "area_name" }, aggregate: "sum",
+	latest_by: "period_start", chart: { types: ["ColumnChart"] },
+	series: [{ label: "人口", column: "value", filter: { column: "indicator_id", eq: "population_count" } }],
+};
+const withDs = (extra = []) => ({
+	...popBase,
+	filters: [
+		{ column: "area_level", eq: "district" },
+		{ column: "dataset_id", eq: "youth_pop_single_age" },
+		...extra,
+	],
+});
+
+const rNoGender = validateSpec(withDs(), cat);
+ok("population_count 有 total 也有 male/female，不篩 gender 要擋下", !rNoGender.ok,
+	rNoGender.ok ? "竟然通過了——會算成兩倍" : rNoGender.errors.join("；"));
+ok("錯誤訊息要說出「重複計算」", !rNoGender.ok && rNoGender.errors.some((e) => /重複|兩倍|加總/.test(e)),
+	(rNoGender.errors || []).join("；"));
+ok("篩 total 就該通過", validateSpec(withDs([{ column: "gender", eq: "total" }]), cat).ok,
+	(validateSpec(withDs([{ column: "gender", eq: "total" }]), cat).errors || []).join("；"));
+ok("篩 male 也該通過", validateSpec(withDs([{ column: "gender", eq: "male" }]), cat).ok);
+
+// 沒有 total 的指標（結婚只有 male/female）不篩才是對的，不可以誤擋
+const marriageNoGender = {
+	...popBase,
+	filters: [{ column: "area_level", eq: "district" }, { column: "dataset_id", eq: "youth_marriage_age_ntpc" }],
+	series: [{ label: "結婚", column: "value", filter: { column: "indicator_id", eq: "marriage_count" } }],
+};
+ok("沒有 total 的指標，不篩 gender 仍要通過", validateSpec(marriageNoGender, cat).ok,
+	(validateSpec(marriageNoGender, cat).errors || []).join("；"));
+
+// ────────────────────────────────────────────────────────────
+group("E. 年齡範圍：spec 要表達得出來，表達不出來的欄位要大聲拒絕");
+
+const ageSpec = (extra) => ({
+	index: "t", name: "測試", city: "metrotaipei", table: "youth_fact_named",
+	query_type: "two_d", x: { column: "area_name" }, aggregate: "sum",
+	latest_by: "period_start", chart: { types: ["ColumnChart"] },
+	filters: [
+		{ column: "area_level", eq: "district" },
+		{ column: "dataset_id", eq: "youth_pop_single_age" },
+		{ column: "gender", eq: "total" },
+		...(extra || []),
+	],
+	series: [{ label: "15-35 歲人口", column: "value",
+		filter: { column: "indicator_id", eq: "population_count" } }],
+});
+
+const rRange = validateSpec(ageSpec([
+	{ column: "age_lower", gte: 15 }, { column: "age_upper", lte: 35 },
+]), cat);
+ok("gte / lte 範圍條件要被接受", rRange.ok, (rRange.errors || []).join("；"));
+
+// 真的算出 15-35 的數字，不是全年齡
+const sqlAge = compileSpec(ageSpec([
+	{ column: "age_lower", gte: 15 }, { column: "age_upper", lte: 35 },
+]), ["板橋區"]);
+let ageRows = [];
+try { ageRows = await query(sqlAge); } catch (e) { ageRows = [{ _err: e.message }]; }
+ok("範圍條件真的進了 SQL", !ageRows[0]?._err, ageRows[0]?._err || "");
+ok("板橋 15-35 歲是 119834，不是全年齡的 547794",
+	Number(ageRows[0]?.data) === 119834,
+	`實際 ${ageRows[0]?.data}`);
+
+// 模型寫了 spec 不認得的欄位時，不可以靜默忽略
+const rUnknown = validateSpec({
+	...ageSpec(),
+	series: [{ label: "15-35 歲人口", column: "value", age_lower: 15, age_upper: 35,
+		filter: { column: "indicator_id", eq: "population_count" } }],
+}, cat);
+ok("series 裡的未知欄位要被擋下，不可以靜默忽略", !rUnknown.ok,
+	rUnknown.ok ? "通過了——標籤會說謊" : rUnknown.errors.join("；"));
+ok("錯誤訊息要點名那個欄位",
+	!rUnknown.ok && rUnknown.errors.some((e) => /age_lower/.test(e)),
+	(rUnknown.errors || []).join("；"));
+
+// ────────────────────────────────────────────────────────────
 group("B. 數列涵蓋的行政區不同時，每個數列仍要補齊所有 x");
 
 const bSpec = {
