@@ -1,0 +1,482 @@
+// Package models stores the models for the postgreSQL databases.
+package models
+
+import (
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+)
+
+/* ----- Models ----- */
+
+// ChartDataQuery is the model for getting the chart data query.
+type ChartDataQuery struct {
+	QueryType  string `json:"query_type" gorm:"column:query_type"`
+	QueryChart string `json:"query_chart" gorm:"column:query_chart"`
+}
+
+// HistoryDataQuery is the model for getting the history data query.
+type HistoryDataQuery struct {
+	QueryHistory string `json:"query_history" gorm:"column:query_history"`
+}
+
+/*
+TwoDimensionalData Json Format:
+
+	{
+		"data": [
+			{
+				"data": [
+					{ "x": "", "y": 17 },
+					...
+				]
+			}
+		]
+	}
+*/
+type TwoDimensionalData struct {
+	Xaxis string  `gorm:"column:x_axis" json:"x"`
+	Data  float64 `gorm:"column:data" json:"y"`
+}
+type TwoDimensionalDataOutput struct {
+	Data []TwoDimensionalData `json:"data"`
+}
+
+/*
+ThreeDimensionalData & PercentData Json Format:
+
+	{
+		"data": [
+			{
+				"name": ""
+				"data": [...]
+			},
+			...
+		]
+	}
+
+>> ThreeDimensionalData is shared by 3D and percentage data
+*/
+type ThreeDimensionalData struct {
+	Xaxis string `gorm:"column:x_axis"`
+	Icon  string `gorm:"column:icon"`
+	Yaxis string `gorm:"column:y_axis"`
+	Data  int    `gorm:"column:data"`
+}
+
+type ThreeDimensionalDataOutput struct {
+	Name string `json:"name"`
+	Icon string `json:"icon"`
+	Data []int  `json:"data"`
+}
+
+/*
+TimeSeriesData Json Format:
+
+	{
+		"data": [
+			{
+				"name": "",
+				"data": [
+					{ "x": "2023-05-25T06:29:00+08:00", "y": 17 },
+					...
+				]
+			},
+			...
+		]
+	}
+*/
+type TimeSeriesData struct {
+	Xaxis time.Time `gorm:"column:x_axis"`
+	Yaxis string    `gorm:"column:y_axis"`
+	Data  float64   `gorm:"column:data"`
+}
+
+type TimeSeriesDataItem struct {
+	X string  `json:"x"`
+	Y float64 `json:"y"`
+}
+
+type TimeSeriesDataOutput struct {
+	Name string               `json:"name"`
+	Data []TimeSeriesDataItem `json:"data"`
+}
+
+/*
+MapLegendData Json Format:
+*/
+type MapLegendData struct {
+	Name  string  `gorm:"column:name" json:"name"`
+	Type  string  `gorm:"column:type" json:"type"`
+	Icon  string  `gorm:"column:icon" json:"icon"`
+	Value float64 `gorm:"column:value" json:"value"`
+}
+
+/*
+BubbleData Json Format:
+*/
+type BubbleData struct {
+	Yaxis    string  `gorm:"column:y_axis"`
+	X        float64 `gorm:"column:x"`
+	Y        float64 `gorm:"column:y"`
+	Z        float64 `gorm:"column:z"`
+	Category *string `gorm:"column:category" json:"-"`
+}
+
+type BubbleDataItem struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	Z float64 `json:"z"`
+}
+
+type BubbleDataOutput struct {
+	Name string           `json:"name"`
+	Data []BubbleDataItem `json:"data"`
+}
+
+/*
+LayeredFlowData Json Format:
+*/
+type LayeredFlowData struct {
+	Source      string  `gorm:"column:source" json:"source"`
+	SourceLayer *int    `gorm:"column:source_layer" json:"source_layer"`
+	Target      string  `gorm:"column:target" json:"target"`
+	TargetLayer *int    `gorm:"column:target_layer" json:"target_layer"`
+	Value       float64 `gorm:"column:value" json:"value"`
+	Category    *string `gorm:"column:category" json:"-"`
+}
+
+/* ----- Handlers ----- */
+
+func GetComponentChartDataQuery(id int, city string) (queryType string, queryString string, err error) {
+	var chartDataQuery ChartDataQuery
+
+	err = DBManager.
+		Table("components").
+		Select("query_charts.query_type, query_charts.query_chart").
+		Joins("LEFT JOIN query_charts ON components.index = query_charts.index").
+		Where("components.id = ?", id).
+		Where("query_charts.city = ?", city).
+		Find(&chartDataQuery).Error
+	if err != nil {
+		return queryType, queryString, err
+	}
+	return chartDataQuery.QueryType, chartDataQuery.QueryChart, nil
+}
+
+func GetComponentHistoryDataQuery(id int, city string, timeFrom string, timeTo string) (queryHistory string, err error) {
+	var historyDataQuery HistoryDataQuery
+
+	err = DBManager.
+		Table("components").
+		Select("query_charts.query_history").
+		Joins("LEFT JOIN query_charts ON components.index = query_charts.index").
+		Where("components.id = ?", id).
+		Where("query_charts.city = ?", city).
+		Find(&historyDataQuery).Error
+	if err != nil {
+		return queryHistory, err
+	}
+	if historyDataQuery.QueryHistory == "" {
+		return historyDataQuery.QueryHistory, err
+	}
+
+	var timeStepUnit string
+
+	timeFromTime, err := time.Parse("2006-01-02T15:04:05+08:00", timeFrom)
+	if err != nil {
+		return queryHistory, err
+	}
+	timeToTime, err := time.Parse("2006-01-02T15:04:05+08:00", timeTo)
+	if err != nil {
+		return queryHistory, err
+	}
+
+	/*
+			timesteps are automatically determined based on the time range:
+		  - Within 24hrs: hour
+		  - Within 1 month: day
+		  - Within 3 months: week
+		  - Within 2 years: month
+		  - More than 2 years: year
+	*/
+	if timeToTime.Sub(timeFromTime).Hours() <= 24 {
+		timeStepUnit = "hour" // Within 24hrs
+	} else if timeToTime.Sub(timeFromTime).Hours() < 24*32 {
+		timeStepUnit = "day" // Within 1 month
+	} else if timeToTime.Sub(timeFromTime).Hours() < 24*93 {
+		timeStepUnit = "week" // Within 3 months
+	} else if timeToTime.Sub(timeFromTime).Hours() < 24*740 {
+		timeStepUnit = "month" // Within 2 years
+	} else {
+		timeStepUnit = "year" // More than 2 years
+	}
+
+	// Insert the time range and timestep unit into the query
+	var queryInsertStrings []any
+
+	if strings.Count(historyDataQuery.QueryHistory, "%s")%3 != 0 {
+		return queryHistory, fmt.Errorf("invalid query string")
+	}
+
+	for i := 0; i < strings.Count(historyDataQuery.QueryHistory, "%s")/3; i++ {
+		queryInsertStrings = append(queryInsertStrings, timeStepUnit, timeFrom, timeTo)
+	}
+
+	historyDataQuery.QueryHistory = fmt.Sprintf(historyDataQuery.QueryHistory, queryInsertStrings...)
+
+	return historyDataQuery.QueryHistory, nil
+}
+
+/*
+Below are the parsing functions for the four data types:
+two_d, three_d, percent, and time. three_d and percent data share a common handler.
+*/
+
+func executeDashboardRawQuery(query *string, timeFrom string, timeTo string, dest any) error {
+	if query == nil {
+		return fmt.Errorf("query is nil")
+	}
+
+	layout := "2006-01-02T15:04:05+08:00"
+	var cleanTimeFrom, cleanTimeTo string
+	if timeFrom != "" {
+		if t, err := time.Parse(layout, timeFrom); err == nil {
+			cleanTimeFrom = t.Format(layout)
+		} else {
+			cleanTimeFrom = timeFrom
+		}
+	}
+	if timeTo != "" {
+		if t, err := time.Parse(layout, timeTo); err == nil {
+			cleanTimeTo = t.Format(layout)
+		} else {
+			cleanTimeTo = timeTo
+		}
+	}
+
+	var sql string
+	if strings.Count(*query, "%s") == 2 {
+		sql = strings.ReplaceAll(*query, "'%s'", "?")
+		sql = strings.ReplaceAll(sql, "%s", "?")
+	} else {
+		sql = *query
+	}
+
+	if strings.Count(sql, "?") == 2 {
+		return DBDashboard.Raw(sql, cleanTimeFrom, cleanTimeTo).Scan(dest).Error
+	}
+	return DBDashboard.Raw(sql).Scan(dest).Error
+}
+
+func GetTwoDimensionalData(query *string, timeFrom string, timeTo string) (chartDataOutput []TwoDimensionalDataOutput, err error) {
+	var chartData []TwoDimensionalData
+
+	err = executeDashboardRawQuery(query, timeFrom, timeTo, &chartData)
+	if err != nil {
+		return chartDataOutput, err
+	}
+	if len(chartData) == 0 {
+		return chartDataOutput, err
+	}
+
+	chartDataOutput = append(chartDataOutput, TwoDimensionalDataOutput{Data: chartData})
+
+	return chartDataOutput, nil
+}
+
+func GetThreeDimensionalData(query *string, timeFrom string, timeTo string) (chartDataOutput []ThreeDimensionalDataOutput, categories []string, err error) {
+	var chartData []ThreeDimensionalData
+
+	err = executeDashboardRawQuery(query, timeFrom, timeTo, &chartData)
+	if err != nil {
+		return chartDataOutput, categories, err
+	}
+	if len(chartData) == 0 {
+		return chartDataOutput, categories, err
+	}
+
+	for _, data := range chartData {
+		var foundX bool
+		for _, category := range categories {
+			if category == data.Xaxis {
+				foundX = true
+				break
+			}
+		}
+
+		if !foundX {
+			categories = append(categories, data.Xaxis)
+		}
+
+		var foundY bool
+		for i, output := range chartDataOutput {
+			if output.Name == data.Yaxis {
+				chartDataOutput[i].Data = append(output.Data, data.Data)
+				foundY = true
+				break
+			}
+		}
+
+		if !foundY {
+			chartDataOutput = append(chartDataOutput, ThreeDimensionalDataOutput{Name: data.Yaxis, Icon: data.Icon, Data: []int{data.Data}})
+		}
+	}
+
+	return chartDataOutput, categories, nil
+}
+
+func GetTimeSeriesData(query *string, timeFrom string, timeTo string) (chartDataOutput []TimeSeriesDataOutput, err error) {
+	var chartData []TimeSeriesData
+
+	err = executeDashboardRawQuery(query, timeFrom, timeTo, &chartData)
+	if err != nil {
+		return chartDataOutput, err
+	}
+	if len(chartData) == 0 {
+		return chartDataOutput, err
+	}
+
+	for _, data := range chartData {
+		var foundY bool
+		formattedDate := data.Xaxis.Format("2006-01-02T15:04:05+08:00")
+		for i, output := range chartDataOutput {
+			if output.Name == data.Yaxis {
+				chartDataOutput[i].Data = append(output.Data, TimeSeriesDataItem{X: formattedDate, Y: data.Data})
+				foundY = true
+				break
+			}
+		}
+
+		if !foundY {
+			chartDataOutput = append(chartDataOutput, TimeSeriesDataOutput{Name: data.Yaxis, Data: []TimeSeriesDataItem{{X: formattedDate, Y: data.Data}}})
+		}
+	}
+
+	return chartDataOutput, nil
+}
+
+func GetMapLegendData(query *string, timeFrom string, timeTo string) (chartData []MapLegendData, err error) {
+	err = executeDashboardRawQuery(query, timeFrom, timeTo, &chartData)
+	if err != nil {
+		return chartData, err
+	}
+	if len(chartData) == 0 {
+		return chartData, err
+	}
+
+	return chartData, nil
+}
+
+func GetBubbleData(query *string, timeFrom string, timeTo string) (chartDataOutput []BubbleDataOutput, categories []string, err error) {
+	var chartData []BubbleData
+
+	err = executeDashboardRawQuery(query, timeFrom, timeTo, &chartData)
+	if err != nil {
+		return chartDataOutput, categories, err
+	}
+	if len(chartData) == 0 {
+		return chartDataOutput, categories, err
+	}
+
+	for _, data := range chartData {
+		if len(categories) == 0 && data.Category != nil && *data.Category != "" {
+			var catMap map[string]string
+			if err := json.Unmarshal([]byte(*data.Category), &catMap); err == nil {
+				if xVal, ok := catMap["x"]; ok {
+					categories = append(categories, xVal)
+				}
+				if yVal, ok := catMap["y"]; ok {
+					categories = append(categories, yVal)
+				}
+				if zVal, ok := catMap["z"]; ok {
+					categories = append(categories, zVal)
+				}
+			}
+		}
+
+		var foundY bool
+		for i, output := range chartDataOutput {
+			if output.Name == data.Yaxis {
+				chartDataOutput[i].Data = append(output.Data, BubbleDataItem{X: data.X, Y: data.Y, Z: data.Z})
+				foundY = true
+				break
+			}
+		}
+
+		if !foundY {
+			chartDataOutput = append(chartDataOutput, BubbleDataOutput{
+				Name: data.Yaxis,
+				Data: []BubbleDataItem{{X: data.X, Y: data.Y, Z: data.Z}},
+			})
+		}
+	}
+
+	return chartDataOutput, categories, nil
+}
+
+func GetLayeredFlowData(query *string, timeFrom string, timeTo string) (chartData []LayeredFlowData, categories []string, err error) {
+	err = executeDashboardRawQuery(query, timeFrom, timeTo, &chartData)
+	if err != nil {
+		return chartData, categories, err
+	}
+	if len(chartData) == 0 {
+		return chartData, categories, err
+	}
+
+	for _, data := range chartData {
+		if data.Category != nil && *data.Category != "" {
+			var catMap map[string]string
+			isJson := false
+			if strings.HasPrefix(strings.TrimSpace(*data.Category), "{") {
+				if err := json.Unmarshal([]byte(*data.Category), &catMap); err == nil {
+					isJson = true
+				}
+			}
+
+			if isJson {
+				keys := []string{"source", "target"}
+				for _, key := range keys {
+					if val, ok := catMap[key]; ok && val != "" {
+						found := false
+						for _, cat := range categories {
+							if cat == val {
+								found = true
+								break
+							}
+						}
+						if !found {
+							categories = append(categories, val)
+						}
+					}
+				}
+			} else {
+				found := false
+				for _, cat := range categories {
+					if cat == *data.Category {
+						found = true
+						break
+					}
+				}
+				if !found {
+					categories = append(categories, *data.Category)
+				}
+			}
+		}
+	}
+
+	sort.Slice(chartData, func(i, j int) bool {
+		var valI, valJ int
+		if chartData[i].SourceLayer != nil {
+			valI = *chartData[i].SourceLayer
+		}
+		if chartData[j].SourceLayer != nil {
+			valJ = *chartData[j].SourceLayer
+		}
+		return valI < valJ
+	})
+
+	return chartData, categories, nil
+}

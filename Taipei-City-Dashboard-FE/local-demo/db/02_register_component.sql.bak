@@ -1,0 +1,127 @@
+-- ═══ 青年人口分區：組件註冊 ═══
+--
+-- 對應影片「七、建立一個新組件 3.0」講的三個步驟：
+--   1. components        建組件本體（id 與 index）
+--   2. query_charts      每個城市一筆設定（含取數的 SQL）
+--   3. component_charts  圖表樣式，跨城市共用只有一筆
+--
+-- id 9001 為避開官方既有編號而選；正式併入時請改為主辦方指派的編號，
+-- 並同步修改下方所有出現 9001 的地方與 dashboards.components 陣列。
+
+-- ── 1. 組件本體 ──
+INSERT INTO public.components (id, index, name) VALUES
+  (9001, 'youth_population_district', '青年人口分區')
+ON CONFLICT (id) DO UPDATE SET index = EXCLUDED.index, name = EXCLUDED.name;
+
+-- ── 2. 各城市設定 ──
+-- 注意：影片明確提醒，若只建 metrotaipei 而沒有 taipei，組件在畫面上會出問題，
+--       所以兩筆都要建。台北的資料來源尚未取得，先以相同查詢佔位（見文件的已知限制）。
+INSERT INTO public.query_charts (
+  index, history_config, map_config_ids, map_filter,
+  time_from, time_to, update_freq, update_freq_unit,
+  source, short_desc, long_desc, use_case, links, contributors,
+  query_type, query_chart, city
+) VALUES (
+  'youth_population_district', NULL, '{}', '{}',
+  'static', NULL, 1, 'year',
+  '新北主計處',
+  '新北市青年人口的行政區分布',
+  '依《青年基本法》定義之青年年齡範圍（18 至 35 歲），呈現新北市 29 個行政區的青年人口分布。受限於公開統計採 5 歲組距，本組件以 20-24、25-29、30-34 三個完整組距呈現，未涵蓋 18-19 歲與 35 歲；精確的 18-35 需以年齡拆組推估。',
+  '用於掌握青年人口在新北市各行政區的聚集情形，可作為青年職涯據點、青創基地、租金補貼資源配置的參考依據。搭配各區的教育、就業與居住資料，可進一步分析青年遷徙與定居的區域差異。',
+  '{https://data.ntpc.gov.tw/datasets/8308ab58-62d1-424e-8314-24b65b7ab492}',
+  '{ntpc}',
+  'three_d',
+  $q$
+  SELECT x_axis, y_axis, data FROM (
+    SELECT "區域別" AS x_axis, '20_24歲人口數' AS y_axis,
+           round(percent7 / 1000.0) AS data
+    FROM public.youth_population_district_newtaipei
+    WHERE "統計類型" = '計' AND "區域別" <> '新北市'
+      AND "年份" = (SELECT max("年份") FROM public.youth_population_district_newtaipei)
+    UNION ALL
+    SELECT "區域別", '25_29歲人口數', round(percent8 / 1000.0)
+    FROM public.youth_population_district_newtaipei
+    WHERE "統計類型" = '計' AND "區域別" <> '新北市'
+      AND "年份" = (SELECT max("年份") FROM public.youth_population_district_newtaipei)
+    UNION ALL
+    SELECT "區域別", '30_34歲人口數', round(percent9 / 1000.0)
+    FROM public.youth_population_district_newtaipei
+    WHERE "統計類型" = '計' AND "區域別" <> '新北市'
+      AND "年份" = (SELECT max("年份") FROM public.youth_population_district_newtaipei)
+  ) t
+  -- 官方要求 three_d 需對 x_axis 與 y_axis 排序，且各系列的 x_axis 順序必須一致
+  -- （/back-end/component-data-apis）。若改用 ORDER BY data DESC，三個年齡層會各自
+  -- 排出不同的行政區順序（實測：30-34 歲的三重區排在中和區之前，另外兩層相反），
+  -- 後端編譯 three_d 時就會把數值對到錯的行政區。此處比照官方 building_age 範例
+  -- 以 ARRAY_POSITION 固定順序；陣列依 20-34 歲合計人口降冪排列。
+  ORDER BY
+    ARRAY_POSITION(ARRAY[
+      '板橋區','新莊區','三重區','中和區','新店區','土城區','蘆洲區','汐止區',
+      '淡水區','樹林區','永和區','林口區','三峽區','五股區','鶯歌區','泰山區',
+      '八里區','瑞芳區','深坑區','三芝區','石門區','萬里區','金山區','貢寮區',
+      '坪林區','平溪區','烏來區','石碇區','雙溪區'
+    ]::varchar[], t.x_axis),
+    ARRAY_POSITION(ARRAY[
+      '20_24歲人口數','25_29歲人口數','30_34歲人口數'
+    ]::varchar[], t.y_axis)
+  $q$,
+  'metrotaipei'
+);
+
+-- 台北市那一筆：用官方 sample data 附的 city_age_distribution_taipei，不是佔位。
+-- 該表結構與新北那張完全相同（percent7/8/9 = 20-24/25-29/30-34，統計類型 計/男/女），
+-- 唯一差異是合計列叫「總計」而非「新北市」。實測 2020-2025 年、12 個行政區。
+INSERT INTO public.query_charts (
+  index, history_config, map_config_ids, map_filter,
+  time_from, time_to, update_freq, update_freq_unit,
+  source, short_desc, long_desc, use_case, links, contributors,
+  query_type, query_chart, city
+) VALUES (
+  'youth_population_district', NULL, '{}', '{}',
+  'static', NULL, 1, 'year',
+  '臺北市主計處',
+  '臺北市青年人口的行政區分布',
+  '依《青年基本法》定義之青年年齡範圍（18 至 35 歲），呈現臺北市 12 個行政區的青年人口分布。受限於公開統計採 5 歲組距，本組件以 20-24、25-29、30-34 三個完整組距呈現，未涵蓋 18-19 歲與 35 歲；精確的 18-35 需以年齡拆組推估。',
+  '用於掌握青年人口在臺北市各行政區的聚集情形，並與新北市對照觀察雙北青年的居住分布差異。',
+  '{https://data.taipei/dataset/detail?id=a6394e3f-3514-4542-87bd-de4310a40db3}',
+  '{doit}',
+  'three_d',
+  $q$
+  SELECT x_axis, y_axis, data FROM (
+    SELECT "區域別" AS x_axis, '20_24歲人口數' AS y_axis,
+           round(percent7 / 1000.0) AS data
+    FROM public.city_age_distribution_taipei
+    WHERE "統計類型" = '計' AND "區域別" <> '總計'
+      AND "年份" = (SELECT max("年份") FROM public.city_age_distribution_taipei)
+    UNION ALL
+    SELECT "區域別", '25_29歲人口數', round(percent8 / 1000.0)
+    FROM public.city_age_distribution_taipei
+    WHERE "統計類型" = '計' AND "區域別" <> '總計'
+      AND "年份" = (SELECT max("年份") FROM public.city_age_distribution_taipei)
+    UNION ALL
+    SELECT "區域別", '30_34歲人口數', round(percent9 / 1000.0)
+    FROM public.city_age_distribution_taipei
+    WHERE "統計類型" = '計' AND "區域別" <> '總計'
+      AND "年份" = (SELECT max("年份") FROM public.city_age_distribution_taipei)
+  ) t
+  -- 同新北，順序必須固定且三個系列一致，否則後端編譯 three_d 會錯位
+  ORDER BY
+    ARRAY_POSITION(ARRAY[
+      '內湖區','文山區','士林區','大安區','北投區','中山區',
+      '信義區','萬華區','松山區','中正區','南港區','大同區'
+    ]::varchar[], t.x_axis),
+    ARRAY_POSITION(ARRAY[
+      '20_24歲人口數','25_29歲人口數','30_34歲人口數'
+    ]::varchar[], t.y_axis)
+  $q$,
+  'taipei'
+);
+
+-- ── 3. 圖表樣式（跨城市共用，只有一筆）──
+INSERT INTO public.component_charts (index, color, types, unit) VALUES
+  ('youth_population_district',
+   '{#5a9cf8,#56B96D,#F8CF58}',
+   '{DistrictChart,ColumnChart}',
+   '仟人')
+ON CONFLICT (index) DO UPDATE
+  SET color = EXCLUDED.color, types = EXCLUDED.types, unit = EXCLUDED.unit;

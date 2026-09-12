@@ -1,0 +1,105 @@
+// Package app initiates the Gin server and connects to the postgreSQL database
+/*
+Developed By Taipei Urban Intelligence Center 2023-2024
+
+// Lead Developer:  Igor Ho (Full Stack Engineer)
+// Systems & Auth: Ann Shih (Systems Engineer)
+// Data Pipelines:  Iima Yu (Data Scientist)
+// Design and UX: Roy Lin (Prev. Consultant), Chu Chen (Researcher)
+// Testing: Jack Huang (Data Scientist), Ian Huang (Data Analysis Intern)
+*/
+package app
+
+import (
+	"TaipeiCityDashboardBE/app/cache"
+	"TaipeiCityDashboardBE/app/initial"
+	"TaipeiCityDashboardBE/app/middleware"
+	"TaipeiCityDashboardBE/app/models"
+	"TaipeiCityDashboardBE/app/routes"
+	"TaipeiCityDashboardBE/app/services/isochrone/transit"
+	"TaipeiCityDashboardBE/global"
+	"TaipeiCityDashboardBE/logs"
+
+	"github.com/fvbock/endless"
+	"github.com/gin-gonic/gin"
+
+	ort "github.com/yalue/onnxruntime_go"
+)
+
+// app.go is the main entry point for this application.
+// initiates configures the postgreSQL, Redis, Gin router and starts the server.
+
+// StartApplication initiates the main backend application, including the Gin router, postgreSQL, and Redis.
+func StartApplication() {
+	// 1. Connect to postgreSQL and Redis
+	models.ConnectToDatabases("MANAGER", "DASHBOARD")
+	cache.ConnectToRedis()
+
+	// 異步啟動等時圈 RAPTOR 服務，避免阻塞 HTTP 伺服器開機與 K8s 健康檢查
+	go func() {
+		if err := transit.InitService(); err != nil {
+			logs.FWarn("Transit service init failed: %v", err)
+		}
+	}()
+
+	initial.InitCronJobs()
+
+	global.LMSession = models.InitLmSession()
+	global.LMTokenizer = models.InitTokenizer()
+
+	// 2. Initiate default Gin router with logger and recovery middleware
+	routes.Router = gin.Default()
+
+	// Set trusted proxies to ensure ClientIP() returns the user's actual IP.
+    // This is necessary when running behind a reverse proxy like Nginx.
+    // Trusting common private network ranges is a safe default for containerized environments.
+    if err := routes.Router.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}); err != nil {
+        logs.FWarn("SetTrustedProxies failed: %v", err)
+    } 
+
+
+	// 3. Add common middlewares that need to run on all routes
+	routes.Router.Use(middleware.AddCommonHeaders)
+	routes.Router.Use(middleware.SanitizeXForwardedFor)
+	// routes.Router.Use(cors.New(cors.Config{
+	// 	AllowOrigins:     []string{"https://tuic.gov.taipei"},
+	// 	AllowMethods:     []string{"GET"},
+	// 	AllowHeaders:     []string{"Origin"},
+	// 	ExposeHeaders:    []string{"Content-Length"},
+	// 	AllowCredentials: true,
+	// }))
+
+	// 4. Configure routes and routing groups (./router.go)
+	routes.ConfigureRoutes()
+
+	// 5. Configure http server
+	addr := global.GinAddr
+
+	err := endless.ListenAndServe(addr, routes.Router)
+	if err != nil {
+		logs.Warn(err)
+	}
+	logs.FInfo("Server on %v stopped", addr)
+
+	// If the server stops, close the database connections
+	models.CloseConnects("MANAGER", "DASHBOARD")
+	cache.CloseConnect()
+
+	// If the server stops, close the lm session and environment
+	global.LMSession.Destroy()
+	ort.DestroyEnvironment()
+	
+}
+
+func MigrateManagerSchema() {
+	models.ConnectToDatabases("MANAGER")
+	models.MigrateManagerSchema()
+	initial.InitDashboardManager()
+	models.CloseConnects("MANAGER")
+}
+
+func InsertDashbaordSampleData() {
+	models.ConnectToDatabases("DASHBOARD")
+	initial.InitSampleCityData()
+	models.CloseConnects("DASHBOARD")
+}

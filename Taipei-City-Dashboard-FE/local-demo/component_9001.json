@@ -1,0 +1,43 @@
+{
+  "id": 9001,
+  "index": "youth_population_district",
+  "name": "青年人口分區",
+  "chart_config": {
+    "index": "youth_population_district",
+    "color": [
+      "#5a9cf8",
+      "#4FB3C4",
+      "#56B96D",
+      "#A8C95F",
+      "#F8CF58"
+    ],
+    "types": [
+      "DistrictChart",
+      "ColumnChart"
+    ],
+    "unit": "仟人"
+  },
+  "history_config": null,
+  "map_config": [
+    null
+  ],
+  "map_filter": null,
+  "time_from": "static",
+  "time_to": null,
+  "update_freq": 1,
+  "update_freq_unit": "year",
+  "source": "新北主計處",
+  "short_desc": "新北市青年近似人口（15-39 歲）的行政區分布",
+  "long_desc": "依《青年基本法》定義之青年年齡範圍為 18 至 35 歲。公開統計採 5 歲組距，18 與 35 都落在組距中間，無法在不推估的前提下精確切出；本組件因此採用15-19、20-24、25-29、30-34、35-39 五個完整組距合計之 15-39 歲，作為青年近似族群（Exact Youth Proxy）觀察新北市 29 個行政區的分布。五個組距皆為官方原始數字之加總，未做任何內插、拆分或估算。法定青年定義仍為 18-35 歲，本組件不等同該範圍。",
+  "use_case": "用於掌握青年人口在新北市各行政區的聚集情形，可作為青年職涯據點、青創基地、租金補貼資源配置的參考依據。五個組距分列呈現，可直接看出各區是以「剛畢業」或「成家階段」族群為主，兩者的政策需求不同。",
+  "links": [
+    "https://data.ntpc.gov.tw/datasets/8308ab58-62d1-424e-8314-24b65b7ab492"
+  ],
+  "contributors": [
+    "doit"
+  ],
+  "updated_at": "2026-09-09T00:00:00.000000Z",
+  "query_type": "three_d",
+  "city": "metrotaipei",
+  "enable_ai_summary": true
+}

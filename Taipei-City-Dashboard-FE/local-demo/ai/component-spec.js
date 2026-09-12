@@ -1,0 +1,351 @@
+// ComponentSpec → SQL 編譯器
+//
+// 這是「自動生成組件」的核心。設計沿用 AimchartAI 的立論：
+//
+//   ── 模型不碰數字，只產出宣告式規格 ──
+//
+// 模型輸出的是 ComponentSpec（挑哪張表、哪幾個欄位、怎麼分組），
+// 由這支程式「決定性地」編譯成 SQL。模型不寫 SQL，也不產生任何數值。
+//
+// 這樣有三個好處：
+//   1. 不可能有 SQL injection——模型的輸出只是資料，不是可執行字串
+//   2. 幻覺會當場失敗——表名或欄位不存在，validateSpec 直接擋下來
+//   3. 數值只在 PostgreSQL 算一次，不會出現「兩邊各算一次結果不同」
+//
+// 第 3 點是 AimchartAI 架構圖裡標為 Δ5 的未解問題。城市儀表板因為
+// query_charts.query_chart 存的就是 SQL，天然沒有這個問題。
+
+/** 後端各 query_type 要求的欄位別名（來源：/back-end/component-data-apis） */
+const REQUIRED_COLUMNS = {
+	two_d: ["x_axis", "data"],
+	three_d: ["x_axis", "y_axis", "data"],
+	percent: ["x_axis", "y_axis", "data"],
+	time: ["x_axis", "y_axis", "data"],
+	map_legend: ["name", "type", "value"],
+};
+
+/** 各 query_type 官方實際搭配過的圖表元件 */
+const ALLOWED_CHARTS = {
+	two_d: ["BarChart", "ColumnChart", "DistrictChart", "DonutChart", "TreemapChart", "MetroChart", "RadarChart"],
+	three_d: ["ColumnChart", "DistrictChart", "BarPercentChart", "HeatmapChart", "PolarAreaChart", "RadarChart", "IndicatorChart", "TextUnitChart", "IconPercentChart"],
+	percent: ["GuageChart", "BarPercentChart", "IconPercentChart", "BarChartWithGoal", "ColumnChart"],
+	time: ["TimelineSeparateChart", "ColumnLineChart", "TimelineStackedChart"],
+	map_legend: ["MapLegend"],
+};
+
+const CITIES = ["taipei", "metrotaipei"];
+
+/** SQL 字串常值：單引號成對跳脫。識別字另外用 quoteIdent。 */
+const lit = (s) => "'" + String(s).replace(/'/g, "''") + "'";
+/** 識別字：只允許中英數與底線，其餘一律拒絕（不是跳脫，是拒絕） */
+function quoteIdent(name) {
+	if (!/^[一-鿿\w]+$/.test(name)) {
+		throw new Error(`識別字含不允許的字元：${name}`);
+	}
+	return '"' + name + '"';
+}
+
+/**
+ * 驗證 spec。回傳 { ok, errors[] }。
+ *
+ * catalog 由 catalog.js 產出，是 catalog.yaml（語意）與 information_schema
+ * （真相）的交集——所以幻覺出來的表名、欄位，以及「有欄位但沒人說明過它是
+ * 什麼意思」的欄位，都會在這裡被擋下。
+ */
+export function validateSpec(spec, catalog) {
+	const e = [];
+	const push = (m) => e.push(m);
+
+	if (!spec || typeof spec !== "object") return { ok: false, errors: ["spec 不是物件"] };
+	if (!spec.index || !/^[a-z][a-z0-9_]*$/.test(spec.index)) push("index 必須是小寫英數底線，且開頭為英文字母");
+	if (!spec.name) push("缺 name");
+	if (!CITIES.includes(spec.city)) push(`city 必須是 ${CITIES.join(" 或 ")}，收到 ${spec.city}`);
+
+	const qt = spec.query_type;
+	if (!REQUIRED_COLUMNS[qt]) push(`不支援的 query_type：${qt}`);
+
+	const cols = catalog.columns?.[spec.table];
+	const meta = catalog.tables?.[spec.table]?.fields || {};
+	if (!cols) {
+		push(`資料表不存在或未在 catalog 說明：${spec.table}`);
+		return { ok: false, errors: e };   // 表都沒有，欄位就不用查了
+	}
+	const has = (c) => cols.includes(c);
+	const typeOf = (c) => meta[c]?.type;
+
+	// city 必須與資料表相符。
+	//
+	// 這關是實測補的：問「比較雙北各區的青年人口」，模型產出
+	// city=metrotaipei 但 table=city_age_distribution_taipei，
+	// 名稱還叫「雙北青年人口分區」——結果是一張標著雙北、只有台北 12 區的圖。
+	// spec 本身完全合法，欄位都在、型別都對，下游每一關都攔不到。
+	//
+	// 成因是 ComponentSpec 一次只能指定一張表，跨城市的問題它表達不出來，
+	// 模型只好挑一邊。與其讓它安靜地挑，不如在這裡大聲失敗。
+	const tableCity = catalog.tables?.[spec.table]?.city;
+	if (tableCity && spec.city !== tableCity) {
+		push(`city 與資料表不符：${spec.table} 屬於 ${tableCity}，但 spec.city 是 ${spec.city}。`
+			+ `一個組件只能對應一個城市；跨城市比較需要拆成兩個組件。`);
+	}
+
+	if (!spec.x?.column) push("缺 x.column");
+	else if (!has(spec.x.column)) push(`欄位不存在：${spec.table}.${spec.x.column}`);
+
+	if (!Array.isArray(spec.series) || spec.series.length === 0) push("series 至少要一項");
+	else {
+		spec.series.forEach((s, i) => {
+			if (!s.label) push(`series[${i}] 缺 label`);
+			if (!s.column) push(`series[${i}] 缺 column`);
+			else if (!has(s.column)) push(`欄位不存在或未說明：${spec.table}.${s.column}`);
+			if (s.filter) {
+				if (!s.filter.column) push(`series[${i}].filter 缺 column`);
+				else if (!has(s.filter.column)) push(`欄位不存在：${spec.table}.${s.filter.column}`);
+				if (!("eq" in s.filter) && !("ne" in s.filter)) push(`series[${i}].filter 需要 eq 或 ne`);
+			}
+		});
+
+		// 標籤不可以說謊。
+		//
+		// 這關擋的是最難發現的一種錯：問「各區女性的青年人口」，模型產出
+		// 標籤寫「女性 20-24歲」、篩選卻是 統計類型='計' 的組件。
+		// 圖畫得出來、數字也對得上某個東西——只是那個東西是男女合計。
+		// 使用者沒有任何線索知道自己被回答了另一個問題。
+		//
+		// 判斷依據是 catalog 的 values（不是硬寫「男／女」），
+		// 所以之後任何有列舉值的分類欄位都自動受保護。
+		for (const [fcol, fmeta] of Object.entries(meta)) {
+			const vals = fmeta?.values;
+			if (!Array.isArray(vals)) continue;
+			const neutral = fmeta.neutral_value;
+			const baseF = (spec.filters || []).find((f) => f.column === fcol);
+
+			spec.series.forEach((sr, i) => {
+				const own = sr.filter?.column === fcol && "eq" in sr.filter ? sr.filter.eq : undefined;
+				const effective = own !== undefined ? own : (baseF && "eq" in baseF ? baseF.eq : undefined);
+
+				// 標籤剛好提到一個值才判斷。提到兩個（「男女合計」）語意不明，不猜。
+				const hit = vals.filter((v) => v !== neutral && String(sr.label).includes(v));
+				if (hit.length !== 1) return;
+				if (effective !== hit[0]) {
+					push(`series[${i}] 的標籤「${sr.label}」提到「${hit[0]}」，`
+						+ `但實際取的是 ${fcol}=${effective ?? "全部"}。`
+						+ `要分「${hit[0]}」請在該數列加 filter：{"column":"${fcol}","eq":"${hit[0]}"}`);
+				}
+			});
+		}
+
+		// two_d 只吃一個數列——compileSpec 的 two_d 分支用的是 series[0]。
+		//
+		// 這關是實測補的，而且它擋下的是今天發現最危險的一種錯：
+		// 模型給了 percent7/8/9 三個數列卻標成 two_d，編譯器只取第一個，
+		// 畫出來是 29 個區、數字合理、標題寫「青年人口」——實際只有 20-24 歲。
+		// 沒有任何一關會叫，因為每個欄位單獨看都合法。
+		// 與其安靜地少算，不如在這裡失敗。
+		if (qt === "two_d" && spec.series.length > 1) {
+			push(`two_d 只能有一個數列，但收到 ${spec.series.length} 個`
+				+ `（${spec.series.map((s) => s.column).join(", ")}）。多數列請用 three_d。`);
+		}
+
+		// 型別一致性：同一張圖不能混用人數與百分比，兩者的座標軸意義不同，
+		// 疊在一起的圖表在數學上沒有意義（也是 catalog.yaml 標 ratio 的用意）
+		const types = [...new Set(spec.series.map((s) => typeOf(s.column)).filter(Boolean))];
+		if (types.length > 1) {
+			push(`series 混用了不同型別的欄位（${types.join(" 與 ")}），同一張圖的數列必須是同一種量`);
+		}
+
+		// 百分比／指數不可再做除法縮放——縮放後的數字不再是任何東西的百分比
+		if (spec.transform?.divide && types.includes("ratio")) {
+			push("ratio 型別（百分比、指數）不可套用 transform.divide");
+		}
+	}
+
+	(spec.filters || []).forEach((f, i) => {
+		if (!f.column) push(`filters[${i}] 缺 column`);
+		else if (!has(f.column)) push(`欄位不存在：${spec.table}.${f.column}`);
+		if (!("eq" in f) && !("ne" in f)) push(`filters[${i}] 需要 eq 或 ne`);
+	});
+
+	if (spec.latest_by && !has(spec.latest_by)) push(`欄位不存在：${spec.table}.${spec.latest_by}`);
+
+	const types = spec.chart?.types;
+	if (!Array.isArray(types) || types.length === 0) push("chart.types 至少要一項");
+	else if (REQUIRED_COLUMNS[qt]) {
+		const bad = types.filter((t) => !ALLOWED_CHARTS[qt].includes(t));
+		if (bad.length) push(`${qt} 不支援這些圖表：${bad.join(", ")}（可用：${ALLOWED_CHARTS[qt].join(", ")}）`);
+	}
+
+	return { ok: e.length === 0, errors: e };
+}
+
+/** 組 WHERE 條件（不含固定順序的部分） */
+function whereClause(spec, extra = []) {
+	const parts = [];
+	// 先 spec.filters 再 series 自己的：後者用來表達「同欄位不同值」，
+	// 例如同一個 percent7，一個數列篩「男」、另一個篩「女」。
+	for (const f of [...(spec.filters || []), ...extra]) {
+		const col = quoteIdent(f.column);
+		if ("eq" in f) parts.push(`${col} = ${lit(f.eq)}`);
+		if ("ne" in f) parts.push(`${col} <> ${lit(f.ne)}`);
+	}
+	for (const v of spec.x?.exclude || []) {
+		parts.push(`${quoteIdent(spec.x.column)} <> ${lit(v)}`);
+	}
+	if (spec.latest_by) {
+		const c = quoteIdent(spec.latest_by);
+		parts.push(`${c} = (SELECT max(${c}) FROM public.${quoteIdent(spec.table)})`);
+	}
+	return parts.length ? "WHERE " + parts.join("\n      AND ") : "";
+}
+
+/** 數值運算：只支援除法與指定小數位，夠用且不給模型自由發揮的空間 */
+function metricExpr(spec, column) {
+	const col = quoteIdent(column);
+	const d = spec.transform?.divide;
+	if (d) return `round(${col} / ${Number(d)}.0)`;
+	// ratio 欄位是 real，直接加總會出現 7238.157860000002 這種浮點尾巴。
+	// 指數到小數點後一位已經遠超過解讀需要。
+	const r = spec.transform?.round;
+	return Number.isInteger(r) ? `round(${col}::numeric, ${r})` : col;
+}
+
+/**
+ * 把 spec 編成 SQL。
+ * xOrder / yOrder 是固定順序用的陣列——**這是正確性的關鍵，不是排版**。
+ * 後端編譯 three_d 時是按列序 append（componentData.go:301-325），
+ * 不對應 category，所以各系列的 x 順序一旦不同就會把數值對到錯的區。
+ */
+export function compileSpec(spec, xOrder) {
+	const t = `public.${quoteIdent(spec.table)}`;
+	const x = quoteIdent(spec.x.column);
+	// 每個數列可以有自己的篩選條件，所以 WHERE 不能只算一次
+	const whereFor = (s) => whereClause(spec, s?.filter ? [s.filter] : []);
+	const arr = (items) => `ARRAY[\n      ${items.map(lit).join(", ")}\n    ]::varchar[]`;
+	// 排序陣列是 varchar[]，但 x 欄位不一定是文字——「年份」就是 integer。
+	// 少了這個轉型，PostgreSQL 會報 function array_position(character varying[],
+	// integer) does not exist，任何以年份為 x 軸的時間序列都跑不起來。
+	// 一律轉 varchar：官方 two_d／three_d 的 x_axis 契約本來就是字串。
+	const asText = (e) => `${e}::varchar`;
+
+	// two_d 只有一個數列，欄位是 x_axis + data，沒有 y_axis。
+	//
+	// 為什麼要分開處理：官方 DistrictChart 依「數列數量」切換格式解讀
+	// （DistrictChart.vue:135-141）——1 個數列時它讀 item.x / item.y，
+	// 多個數列時它讀純數字陣列。所以單一數列的 three_d 會讓它拿到
+	// undefined，總合顯示 NaN。單一數列本來就該是 two_d。
+	if (spec.query_type === "two_d") {
+		const s0 = spec.series[0];
+		return [
+			`SELECT ${asText(x)} AS x_axis, ${metricExpr(spec, s0.column)} AS data`,
+			`FROM ${t}`,
+			whereFor(s0),
+			"-- 順序固定，避免每次查詢的排列不同",
+			`ORDER BY ARRAY_POSITION(${arr(xOrder)}, ${asText(x)})`,
+		].filter(Boolean).join("\n");
+	}
+
+	const blocks = spec.series.map((s, i) => {
+		const alias = i === 0 ? ` AS x_axis` : "";
+		const yAlias = i === 0 ? ` AS y_axis` : "";
+		const dAlias = i === 0 ? ` AS data` : "";
+		const w = whereFor(s);
+		return `    SELECT ${asText(x)}${alias}, ${lit(s.label)}${yAlias}, ${metricExpr(spec, s.column)}${dAlias}\n` +
+		       `    FROM ${t}\n` + (w ? `    ${w}\n` : "");
+	});
+
+	const yOrder = spec.series.map((s) => s.label);
+
+	return [
+		"SELECT x_axis, y_axis, data FROM (",
+		blocks.join("    UNION ALL\n"),
+		"  ) t",
+		"  -- 順序必須固定且各系列一致，否則後端會把數值對到錯的 category",
+		"  ORDER BY",
+		`    ARRAY_POSITION(${arr(xOrder)}, t.x_axis::varchar),`,
+		`    ARRAY_POSITION(${arr(yOrder)}, t.y_axis::varchar)`,
+	].join("\n");
+}
+
+/**
+ * 單一數列的 three_d／percent 一律降成 two_d。
+ * 語意上本來就相同（一個分類一個值），而且能避開 DistrictChart 的格式陷阱。
+ */
+export function normalizeSpec(spec) {
+	if (!spec) return spec;
+	let out = spec;
+	const warn = [];
+
+	if (out.series?.length === 1 && (out.query_type === "three_d" || out.query_type === "percent")) {
+		out = { ...out, query_type: "two_d", _normalizedFrom: out.query_type };
+	}
+
+	// 圖表型別選錯就直接改掉，不要讓整個組件失敗。
+	//
+	// 挑哪個欄位、怎麼分組是正確性問題——錯了必須大聲失敗。
+	// 但「用 BarChart 還是 ColumnChart」純粹是呈現，改掉不會讓數字變錯。
+	// 實測模型會把 two_d 的 BarChart 用在 three_d 上；為了這個讓
+	// demo 當場失敗不划算。改掉，但記一筆警告，不要假裝沒事。
+	const allowed = ALLOWED_CHARTS[out.query_type];
+	if (allowed) {
+		const asked = out.chart?.types || [];
+		const kept = asked.filter((t) => allowed.includes(t));
+		const dropped = asked.filter((t) => !allowed.includes(t));
+		if (dropped.length) {
+			const types = kept.length ? kept : [allowed[0]];
+			warn.push(`${out.query_type} 不支援 ${dropped.join("、")}，已改用 ${types.join("、")}`);
+			out = { ...out, chart: { ...(out.chart || {}), types } };
+		}
+	}
+
+	return warn.length ? { ...out, _warnings: warn } : out;
+}
+
+/** 探測 x 軸的固定順序：依所有 series 加總降冪。回傳一段 SQL 讓呼叫端執行。 */
+export function orderProbeSQL(spec, catalog) {
+	const t = `public.${quoteIdent(spec.table)}`;
+	const x = quoteIdent(spec.x.column);
+
+	// 為什麼是 UNION + GROUP BY，而不是把欄位加起來就好：
+	// 數列可以各自帶篩選條件（男／女），那時同一個 x 會落在不同的列上，
+	// 「一列之內把欄位相加」這個假設就不成立了。
+	// 先展開成 (x, 值) 再 GROUP BY，不管有沒有 per-series filter 都正確。
+	const blocks = spec.series.map((sr) => {
+		const w = whereClause(spec, sr.filter ? [sr.filter] : []);
+		return `    SELECT ${x} AS x_axis, coalesce(${quoteIdent(sr.column)}, 0) AS v\n` +
+		       `    FROM ${t}\n` + (w ? `    ${w}\n` : "");
+	});
+
+	// 分類軸（行政區）照數值大小排，讀者一眼看得出高低。
+	// 但時間軸不行——「2004, 2005, 2003, 2006」在趨勢圖上是雜訊。年份照時序。
+	const isYear = catalog?.tables?.[spec.table]?.fields?.[spec.x.column]?.type === "year";
+	const order = isYear ? "x_axis" : "sum(v) DESC, x_axis";
+
+	return [
+		"SELECT x_axis FROM (",
+		blocks.join("    UNION ALL\n"),
+		"  ) u",
+		"  GROUP BY x_axis",
+		`  ORDER BY ${order}`,
+	].join("\n");
+}
+
+/** 各 query_type 的用途說明，給 prompt 用。與 ALLOWED_CHARTS 共用同一份真相。 */
+const QUERY_TYPE_USE = {
+	two_d:      "一個分類對一個值",
+	three_d:    "一個分類對多個數列",
+	percent:    "占比（分子分母）",
+	time:       "時間序列——需要真正的日期欄位",
+	map_legend: "地圖圖層",
+};
+
+/**
+ * 把 query_type → 可用圖表 組成 prompt 的一段。
+ * 程式化生成而不是手寫：改了 ALLOWED_CHARTS，prompt 自動跟上，
+ * 不會出現「程式改了、prompt 還在講舊的」這種慢性腐爛。
+ */
+export function chartOptionsForPrompt() {
+	return Object.entries(ALLOWED_CHARTS)
+		.map(([qt, charts]) => `  ${qt.padEnd(11)}${(QUERY_TYPE_USE[qt] || "").padEnd(16)}${charts.join(", ")}`)
+		.join("\n");
+}
+
+export { REQUIRED_COLUMNS, ALLOWED_CHARTS };

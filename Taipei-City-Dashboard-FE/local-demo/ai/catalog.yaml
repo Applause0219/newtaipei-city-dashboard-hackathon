@@ -1,0 +1,199 @@
+# 城市儀表板資料目錄
+#
+# 這份檔案是「防幻覺」的白名單，同時是 LLM prompt 的 grounding 來源。
+# 只有列在這裡的資料表與欄位，才允許出現在 ComponentSpec 裡。
+#
+# 為什麼非有不可：本專案的欄位叫 percent2 ~ percent33，**名稱完全沒有語意**。
+# 模型只看 information_schema 不可能知道 percent7 是 20-24 歲。沒有這份對照，
+# 生出來的組件會是「語法正確但意義錯誤」——最難發現的一種錯。
+#
+# 對照關係全部以實際資料驗算過（2025 年、臺北市總計）：
+#   percent3..percent23 加總 = percent2（總人口）
+#   percent6..percent15  加總 = percent26（15-64 歲）
+#   percent24+percent26+percent28 = percent2
+#   percent33 = percent28 / percent24 * 100（老化指數）
+#
+# 刻意不收錄：
+#   1. 顏色 —— 由 component_charts.color 指定，模型無從干預
+#   2. 未驗證語意的欄位 —— 寧可少列，多列一個就是在驗證器上開一個洞
+
+catalog_version: "1"
+verified_on: "2026-09-09"
+verified_against: "本機 dashboard 資料庫，臺北市 2025 年總計列"
+
+# 各 type 允許的聚合方式。validator 以此檢查欄位型別與用法是否相容。
+agg_rules:
+  count:   [sum, avg, min, max]      # 人數，可加總
+  ratio:   [avg, min, max]           # 百分比／指數，**不可加總**
+  year:    [group]
+  category: [group]
+
+tables:
+
+  city_age_distribution_newtaipei:
+    label: 新北市現住人口年齡分配
+    city: metrotaipei
+    grain: 一列 = 一個行政區 × 一年 × 一種統計類型
+    source: 新北市主計處
+    note: >-
+      合計列的「區域別」是「新北市」（臺北那張表是「總計」），做分區圖時
+      務必排除，否則合計會被當成一個行政區畫進去。
+    # 官方已經用這批資料做過的組件（以 index 對照）。
+    # 生成前會查這個清單，告訴使用者「官方已經有了、而且是什麼視角」，
+    # 而不是默默生一個重複的。用人工標而不是字串比對，是因為
+    # 「老化指數」vs「屋齡分布」這種字面接近但語意無關的情況，比對會誤判。
+    related_official_components:
+      - city_age_distribution    # 全市年齡分區
+      - dependency_aging         # 扶養比及老化指數
+    fields:
+      年份:
+        type: year
+        label: 年份（西元）
+        groupable: true
+      區域別:
+        type: category
+        label: 行政區
+        groupable: true
+        note: 含合計列，見上方 note
+      統計類型:
+        type: category
+        label: 性別
+        groupable: true
+        # values 不只是文件——validateSpec 會拿它比對數列標籤，
+        # 抓「標籤寫女性、篩選卻是計」這種名實不符的組件。
+        values: ["計", "男", "女"]
+        neutral_value: "計"
+        note: >-
+          值為 計／男／女。問題沒有提到性別時固定篩選「計」。
+          要做男女對照時，不要放進 filters（那樣整張圖只會有一個性別），
+          而是讓每個數列各自帶 filter，例如
+          series[0] = {column: percent7, filter: {column: 統計類型, eq: 男}}、
+          series[1] = {column: percent7, filter: {column: 統計類型, eq: 女}}。
+      percent2:
+        type: count
+        label: 總人口
+      percent3:
+        type: count
+        label: 0-4歲人口
+      percent4:
+        type: count
+        label: 5-9歲人口
+      percent5:
+        type: count
+        label: 10-14歲人口
+      percent6:
+        type: count
+        label: 15-19歲人口
+      percent7:
+        type: count
+        label: 20-24歲人口
+        note: 《青年基本法》18-35 歲的起點落在此組距中間，無法直接切出。
+      percent8:
+        type: count
+        label: 25-29歲人口
+      percent9:
+        type: count
+        label: 30-34歲人口
+        note: 青年區間常用的最後一個完整組距（30-34）。
+      percent10:
+        type: count
+        label: 35-39歲人口
+      percent11:
+        type: count
+        label: 40-44歲人口
+      percent12:
+        type: count
+        label: 45-49歲人口
+      percent13:
+        type: count
+        label: 50-54歲人口
+      percent14:
+        type: count
+        label: 55-59歲人口
+      percent15:
+        type: count
+        label: 60-64歲人口
+      percent16:
+        type: count
+        label: 65-69歲人口
+      percent17:
+        type: count
+        label: 70-74歲人口
+      percent18:
+        type: count
+        label: 75-79歲人口
+      percent19:
+        type: count
+        label: 80-84歲人口
+      percent20:
+        type: count
+        label: 85-89歲人口
+      percent21:
+        type: count
+        label: 90-94歲人口
+      percent22:
+        type: count
+        label: 95-99歲人口
+      percent23:
+        type: count
+        label: 100歲以上人口
+      percent24:
+        type: count
+        label: 0-14歲人口
+        note: 幼年人口。等於 percent3+percent4+percent5。
+      percent25:
+        type: ratio
+        label: 幼年人口佔比(%)
+        note: percent24 / percent2 × 100。百分比不可加總。
+      percent26:
+        type: count
+        label: 15-64歲人口
+        note: 工作年齡人口。等於 percent6..percent15 加總。
+      percent27:
+        type: ratio
+        label: 工作年齡人口佔比(%)
+      percent28:
+        type: count
+        label: 65歲以上人口
+        note: 老年人口。
+      percent29:
+        type: ratio
+        label: 老年人口佔比(%)
+      percent30:
+        type: ratio
+        label: 老年扶養比
+        note: percent28 / percent26 × 100。
+      percent31:
+        type: ratio
+        label: 幼年扶養比
+        note: percent24 / percent26 × 100。
+      percent32:
+        type: ratio
+        label: 扶養比
+        note: percent30 + percent31。
+      percent33:
+        type: ratio
+        label: 老化指數
+        note: percent28 / percent24 × 100。臺北 2025 為 190.77。
+
+  city_age_distribution_taipei:
+    label: 臺北市現住人口年齡分配
+    city: taipei
+    grain: 一列 = 一個行政區 × 一年 × 一種統計類型
+    source: 臺北市主計處
+    note: >-
+      欄位定義與 city_age_distribution_newtaipei **完全相同**，可共用同一份
+      欄位說明。唯一差異：合計列的「區域別」叫「總計」，不是「新北市」。
+      實測涵蓋 2020-2025 年、12 個行政區。
+    same_fields_as: city_age_distribution_newtaipei
+
+  youth_population_district_newtaipei:
+    label: 新北市青年人口分區（本專案自建）
+    city: metrotaipei
+    grain: 一列 = 一個行政區 × 一年 × 一種統計類型
+    source: 新北市開放資料平臺「現住人口之年齡分配」
+    note: >-
+      結構刻意與官方 city_age_distribution_newtaipei 一致，涵蓋 2000-2024 年。
+      合計列的區域別是「新北市」。
+    same_fields_as: city_age_distribution_newtaipei
+

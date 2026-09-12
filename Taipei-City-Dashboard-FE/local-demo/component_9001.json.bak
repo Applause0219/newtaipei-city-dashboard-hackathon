@@ -1,0 +1,41 @@
+{
+  "id": 9001,
+  "index": "youth_population_district",
+  "name": "青年人口分區",
+  "chart_config": {
+    "index": "youth_population_district",
+    "color": [
+      "#5a9cf8",
+      "#56B96D",
+      "#F8CF58"
+    ],
+    "types": [
+      "DistrictChart",
+      "ColumnChart"
+    ],
+    "unit": "仟人"
+  },
+  "history_config": null,
+  "map_config": [
+    null
+  ],
+  "map_filter": null,
+  "time_from": "static",
+  "time_to": null,
+  "update_freq": 1,
+  "update_freq_unit": "year",
+  "source": "新北主計處",
+  "short_desc": "新北市青年人口的行政區分布",
+  "long_desc": "依《青年基本法》定義之青年年齡範圍（18 至 35 歲），呈現新北市 29 個行政區的青年人口分布。受限於公開統計採 5 歲組距，本組件以 20-24、25-29、30-34 三個完整組距呈現，未涵蓋 18-19 歲與 35 歲；精確的 18-35 需以年齡拆組推估，詳見組件說明。",
+  "use_case": "用於掌握青年人口在新北市各行政區的聚集情形，可作為青年職涯據點、青創基地、租金補貼資源配置的參考依據。搭配各區的教育、就業與居住資料，可進一步分析青年遷徙與定居的區域差異。",
+  "links": [
+    "https://data.ntpc.gov.tw/datasets/8308ab58-62d1-424e-8314-24b65b7ab492"
+  ],
+  "contributors": [
+    "doit"
+  ],
+  "updated_at": "2026-09-09T00:00:00.000000Z",
+  "query_type": "three_d",
+  "city": "metrotaipei",
+  "enable_ai_summary": true
+}
