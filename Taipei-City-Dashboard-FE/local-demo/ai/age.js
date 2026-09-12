@@ -299,8 +299,8 @@ export function classifyAgeScope(bins) {
 	const { sorted, gap } = sortedContiguous(bins);
 	if (gap) throw new AgeScopeError(gap, { bins: sorted });
 
-	const lower = sorted[0].lower;
-	const upper = sorted[sorted.length - 1].upper;
+	const {lower} = sorted[0];
+	const {upper} = sorted[sorted.length - 1];
 
 	let classification;
 	if (lower === POLICY_YOUTH.lower && upper === POLICY_YOUTH.upper) {

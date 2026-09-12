@@ -109,7 +109,7 @@ async function generateBedrock(prompt, { maxTokens = 8192 } = {}) {
 	// 跟 Gemini 那條路徑當初踩過的坑一模一樣，成因與解法卻完全不同。
 	const finishReason = res.stop_reason === "max_tokens" ? "MAX_TOKENS"
 		: res.stop_reason === "end_turn" ? "STOP"
-		: res.stop_reason;
+			: res.stop_reason;
 
 	return { text, model: `bedrock/${model}`, finishReason, usage: res.usage };
 }
@@ -125,8 +125,8 @@ async function generateBedrock(prompt, { maxTokens = 8192 } = {}) {
 export async function generateSpec(prompt) {
 	const { text, model, finishReason } =
 		PROVIDER === "bedrock" ? await generateBedrock(prompt) :
-		PROVIDER === "gemini"  ? await generateGemini(prompt) :
-		await stubSpec(prompt);
+			PROVIDER === "gemini"  ? await generateGemini(prompt) :
+				await stubSpec(prompt);
 
 	// 模型有時仍會包在 ```json 裡，容忍但不鼓勵
 	const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();

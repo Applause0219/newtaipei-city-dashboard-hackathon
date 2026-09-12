@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  dashboard-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.demo
+    ports:
+      - "80:5173"
+    environment:
+      - NODE_ENV=production
+      - AI_PROVIDER=bedrock
+      - PGHOST=postgres-db
+      - PGUSER=postgres
+      - PGPASSWORD=postgres
+      - PGDATABASE=dashboard
+    env_file:
+      - ./Taipei-City-Dashboard-FE/local-demo/ai/secrets.env
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+
+  postgres-db:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=dashboard
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./Taipei-City-Dashboard-FE/local-demo/db/01_data_table.sql:/docker-entrypoint-initdb.d/01_data_table.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dashboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

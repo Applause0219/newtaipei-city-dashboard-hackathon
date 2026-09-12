@@ -882,7 +882,7 @@ export function buildInsightArtifact(args, opts = {}) {
 	if (!gate.ok) {
 		throw new Error(`候選未通過閘門 ${gate.gate}（${gate.label}）：${gate.reason}`);
 	}
-	const ctx = gate.ctx;
+	const {ctx} = gate;
 	const c = ctx.candidate;
 	const scope = ctx.ageScope;
 

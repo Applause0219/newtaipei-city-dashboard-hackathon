@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>青年儀表板 - AWS 上雲架構規劃書 (Draft)</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-light: #eff6ff;
+      --aws-orange: #ff9900;
+      --aws-orange-bg: #fff8eb;
+      --aws-orange-border: #fcd34d;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --bg-page: #f8fafc;
+      --bg-card: #ffffff;
+      --border-color: #e2e8f0;
+      --border-subtle: #f1f5f9;
+      --code-bg: #f1f5f9;
+      --code-color: #0f172a;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      line-height: 1.75;
+      font-size: 16px;
+      padding: 40px 20px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: 48px 56px;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 16px 12px;
+      }
+      .container {
+        padding: 28px 20px;
+        border-radius: var(--radius-md);
+      }
+    }
+
+    /* Header */
+    .header {
+      border-bottom: 2px solid var(--border-subtle);
+      padding-bottom: 28px;
+      margin-bottom: 36px;
+    }
+
+    .badge-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 9999px;
+      letter-spacing: 0.025em;
+    }
+
+    .badge-aws {
+      background-color: #ff99001f;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
+
+    .badge-status {
+      background-color: #f1f5f9;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+    }
+
+    .badge-project {
+      background-color: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1.35;
+      letter-spacing: -0.02em;
+    }
+
+    /* Headings */
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-top: 36px;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #334155;
+      margin-top: 24px;
+      margin-bottom: 12px;
+    }
+
+    p {
+      margin-bottom: 16px;
+      color: #334155;
+    }
+
+    /* Lists */
+    ul {
+      list-style-type: none;
+      margin-bottom: 20px;
+      padding-left: 4px;
+    }
+
+    ul li {
+      position: relative;
+      padding-left: 24px;
+      margin-bottom: 10px;
+      color: #334155;
+    }
+
+    ul li::before {
+      content: "";
+      position: absolute;
+      left: 6px;
+      top: 10px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--primary);
+    }
+
+    /* Code inline */
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 0.9em;
+      background-color: var(--code-bg);
+      color: var(--code-color);
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      border: 1px solid #e2e8f0;
+    }
+
+    /* Strong text */
+    strong {
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    /* Cards / Highlights */
+    .card-highlight {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius-md);
+      padding: 20px;
+      margin: 18px 0;
+    }
+
+    .security-callout {
+      background-color: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-left: 4px solid #16a34a;
+      border-radius: var(--radius-sm);
+      padding: 16px 20px;
+      margin: 18px 0;
+    }
+
+    .security-callout h4 {
+      color: #15803d;
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .security-callout p, .security-callout li {
+      color: #166534;
+      font-size: 14.5px;
+      margin-bottom: 6px;
+    }
+
+    .security-callout li::before {
+      background-color: #16a34a;
+    }
+
+    /* Task / Check list */
+    .task-list {
+      list-style: none;
+      padding-left: 0;
+      margin: 16px 0 24px 0;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .task-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 18px;
+      background: #ffffff;
+      border-bottom: 1px solid var(--border-subtle);
+      transition: background 0.15s ease;
+    }
+
+    .task-item:last-child {
+      border-bottom: none;
+    }
+
+    .task-item:hover {
+      background: #f8fafc;
+    }
+
+    .task-checkbox {
+      margin-top: 4px;
+      width: 17px;
+      height: 17px;
+      accent-color: var(--primary);
+      cursor: default;
+    }
+
+    .task-content {
+      flex: 1;
+      font-size: 15px;
+      line-height: 1.6;
+      color: #334155;
+    }
+
+    /* Blockquote */
+    blockquote {
+      background: #eff6ff;
+      border-left: 4px solid var(--primary);
+      padding: 14px 20px;
+      margin: 24px 0 10px 0;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      color: #1e40af;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    blockquote svg {
+      flex-shrink: 0;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    @media print {
+      body {
+        background: none;
+        padding: 0;
+      }
+      .container {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="badge-bar">
+        <span class="badge badge-project">新北市AI智慧城市黑客松</span>
+        <span class="badge badge-aws">AWS Deployment</span>
+        <span class="badge badge-status">Draft 草案</span>
+      </div>
+      <h1>青年儀表板 - AWS 上雲架構規劃書 (Draft)</h1>
+    </header>
+
+    <main>
+      <!-- Section 1 -->
+      <section>
+        <h2>1. 專案概述</h2>
+        <p>本規劃書旨在為「<strong>新北市AI智慧城市黑客松</strong>」專案（青年人口儀表板）設計輕量、穩定且安全的 AWS 上雲架構，以供評審展示與後續大會交接使用。</p>
+      </section>
+
+      <!-- Section 2 -->
+      <section>
+        <h2>2. 核心組件分析</h2>
+        <p>根據本機架構 (<code>local-demo/ARCHITECTURE.md</code>)，目前專案包含三大核心模組：</p>
+        <ul>
+          <li><strong>前端與代理層 (Frontend &amp; Proxy)</strong>：Vue 3 (Vite) + Node.js (<code>inject.js</code> 中介層)，負責提供 UI 介面、官方 API 快取、請求攔截與代理。</li>
+          <li><strong>AI 生成層 (Bedrock Integration)</strong>：使用 Amazon Bedrock (Claude Sonnet 4.6 / Haiku 等)，透過 <code>@aws-sdk</code> (SigV4) 進行身分驗證，處理組件生成與 AI 洞察。</li>
+          <li><strong>資料庫 (Database)</strong>：PostgreSQL 16，負責儲存 <code>01_data_table.sql</code> (約 2,250 筆新北 29 區人口資料)。</li>
+        </ul>
+      </section>
+
+      <!-- Section 3 -->
+      <section>
+        <h2>3. 建議架構：單台 EC2 容器化部署</h2>
+        <p>考量黑客松短時間交付與現場展示需求，避免複雜且建置耗時的大型叢集，強烈推薦採用 <strong>單一 EC2 主機 + Docker Compose</strong> 架構。</p>
+
+        <h3>3.1 資源配置</h3>
+        <ul>
+          <li><strong>運算資源</strong>：AWS EC2 (<code>t4g.small</code>，ARM64 架構)，性價比高，成本極低且效能足以應付展示。</li>
+          <li><strong>網路設定</strong>：配置 Elastic IP 固定公有 IP；Security Group 僅開放 <code>80</code> (HTTP), <code>443</code> (HTTPS), <code>22</code> (SSH)。</li>
+          <li><strong>作業系統</strong>：Ubuntu 24.04 LTS。</li>
+        </ul>
+
+        <h3>3.2 容器化設計 (Docker Compose)</h3>
+        <ul>
+          <li><strong><code>postgres-db</code> 容器</strong>：底層使用官方 PostgreSQL Image，並將 <code>local-demo/db/</code> 掛載為初始化腳本，啟動時自動寫入測試資料。</li>
+          <li><strong><code>dashboard-web</code> 容器</strong>：打包 Vite build 後的靜態檔與 Node.js API 服務，統一對外提供服務。</li>
+        </ul>
+
+        <div class="security-callout">
+          <h4>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            3.3 資安與身分驗證最佳實踐 (IAM)
+          </h4>
+          <ul>
+            <li><strong>無金鑰落地 (Keyless Security)</strong>：將 EC2 綁定 IAM Instance Profile (給予 <code>AmazonBedrockFullAccess</code> 權限)。</li>
+            <li><strong>安全效益</strong>：伺服器上<strong>完全不需存放</strong> <code>AWS_ACCESS_KEY_ID</code> 與 <code>AWS_SECRET_ACCESS_KEY</code>，阻絕金鑰外洩風險，符合現代雲端資安與主辦方規範。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Section 4 -->
+      <section>
+        <h2>4. 團隊審核重點</h2>
+        <p>請團隊成員協助審閱以下重點：</p>
+        <div class="task-list">
+          <div class="task-item">
+            <input type="checkbox" class="task-checkbox" id="task-1" disabled>
+            <label class="task-content" for="task-1">
+              <strong>效能預估</strong>：EC2 <code>t4g.small</code> 規格是否符合預期的 Demo 併發負載？
+            </label>
+          </div>
+          <div class="task-item">
+            <input type="checkbox" class="task-checkbox" id="task-2" disabled>
+            <label class="task-content" for="task-2">
+              <strong>資料持久化</strong>：確認 PostgreSQL 是否只需啟動時灌入測試資料，無須額外實作永久儲存區 (Volume)？
+            </label>
+          </div>
+          <div class="task-item">
+            <input type="checkbox" class="task-checkbox" id="task-3" disabled>
+            <label class="task-content" for="task-3">
+              <strong>網域名稱</strong>：是否需要額外配置專屬 Domain Name 與 HTTPS 憑證，還是直接使用 IP 進行內部 Demo？
+            </label>
+          </div>
+        </div>
+
+        <blockquote>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+          <span>請組員檢閱此架構，確認無誤後，即可進行 Dockerfile 與 CI/CD 腳本撰寫。</span>
+        </blockquote>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>新北市AI智慧城市黑客松 &copy; 2026</span>
+      <span>來源文件：<code>AWS-Deployment-Architecture.md</code></span>
+    </footer>
+  </div>
+</body>
+</html>

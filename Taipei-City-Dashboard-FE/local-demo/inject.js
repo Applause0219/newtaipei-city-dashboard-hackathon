@@ -88,11 +88,8 @@ function addMine(payload) {
 	return payload;
 }
 
-export function injectLocalComponents() {
-	return {
-		name: "inject-local-components",
-		configureServer(server) {
-			server.middlewares.use(async (req, res, next) => {
+function createApiMiddleware() {
+	return async (req, res, next) => {
 				const url = req.url || "";
 				if (!url.startsWith("/api/")) return next();
 
@@ -236,7 +233,18 @@ export function injectLocalComponents() {
 					res.statusCode = 502;
 					return res.end(JSON.stringify({ status: "error", message: String(err.message) }));
 				}
-			});
+			};
+}
+
+export function injectLocalComponents() {
+	const middleware = createApiMiddleware();
+	return {
+		name: "inject-local-components",
+		configurePreviewServer(server) {
+			server.middlewares.use(middleware);
+		},
+		configureServer(server) {
+			server.middlewares.use(middleware);
 		},
 	};
 }
