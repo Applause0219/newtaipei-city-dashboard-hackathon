@@ -170,8 +170,8 @@ export const useChatStore = defineStore('chat', () => {
 			// 因此不論有沒有推薦，都一併提供「照您的問題現做一個」的選項。
 			chatData.value.push({
 				id: chatData.value.length + 1, role: 'bot', isDefault: false,
-				content: `如果上面的組件都不是您要的，我也可以直接照您的問題做一個新組件 👇`,
-				button: [{ id: 1, text: '幫我建立組件' }],
+				content: `如果上面的組件都不是您要的，我可以直接照您的問題做一個新組件；\n或是讓我查過資料再回答（會慢一點，但能處理比較複雜的問題）👇`,
+				button: [{ id: 1, text: '幫我建立組件' }, { id: 2, text: '深入分析' }],
 				question: newChatData.content,
 			});
 		} else {
@@ -179,8 +179,8 @@ export const useChatStore = defineStore('chat', () => {
 			// 現在改成提議即時生成一個——資料目錄裡有的東西，就做得出來。
 			chatData.value.push({
 				id: chatData.value.length + 1, role: 'bot', isDefault: false,
-				content: `現有的組件裡沒有夠接近的 🤔\n\n不過如果這個問題在資料目錄涵蓋的範圍內，我可以直接幫您做一個新組件。`,
-				button: [{ id: 1, text: '幫我建立組件' }],
+				content: `現有的組件裡沒有夠接近的 🤔\n\n不過如果這個問題在資料目錄涵蓋的範圍內，我可以幫您做一個新組件；\n或是讓我實際查過資料再回答 👇`,
+				button: [{ id: 1, text: '幫我建立組件' }, { id: 2, text: '深入分析' }],
 				question: newChatData.content,
 			});
 		}

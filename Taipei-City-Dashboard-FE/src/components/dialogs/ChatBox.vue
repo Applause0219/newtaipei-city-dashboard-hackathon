@@ -24,8 +24,78 @@ const chatAreaRef = ref(null);
 const isStickyOpen = ref(false);
 const dashboardCreationLoading = ref(false);
 const componentGenLoading = ref(false);
+const agentLoading = ref(false);
+
+// 工具代號 → 人話。使用者看到的是「正在做什麼」，不是函式名。
+const TOOL_LABEL = {
+	list_domains: "盤點資料主題",
+	search_indicators: "搜尋相關指標",
+	inspect_indicator: "檢查指標能不能用",
+	query_indicator: "查詢實際數值",
+	list_official_components: "比對官方既有組件",
+	build_component: "建立組件",
+};
 
 const qaBtnHandler = async (text, relations, chat) => {
+	// ── Agent：模型自己決定查什麼、查幾次 ──
+	//
+	// 與「幫我建立組件」的差別是誰決定步驟：
+	//   幫我建立組件  一次呼叫 → spec → 圖。快，可重現。
+	//   深入分析      模型搜尋、檢視、查數、建圖，自己修錯。慢，會探索。
+	//
+	// 兩顆按鈕都留著，因為它們回答的是不同種類的問題。
+	if (text === "深入分析") {
+		if (agentLoading.value) return;
+		agentLoading.value = true;
+		addChatData({ role: "bot", content: "讓我查一下資料…" });
+		try {
+			const res = await http.post(
+				"/agent",
+				{ question: chat?.question || "" },
+				{ headers: { "Content-Type": "application/json" } },
+			);
+			const r = res.data?.data || {};
+
+			// 先把「做了哪些事」攤開。這是使用者唯一能檢查它有沒有亂編的地方——
+			// 每一步都對應一次真實的資料庫查詢。
+			const steps = (r.trace || []).map((t, i) => {
+				const label = TOOL_LABEL[t.name] || t.name;
+				const arg = Object.values(t.args || {}).filter(Boolean).join("、");
+				return `${i + 1}. ${label}${arg ? `（${arg}）` : ""} → ${t.summary}`;
+			});
+			if (steps.length) {
+				addChatData({
+					role: "bot",
+					content: `🔍 查詢過程（${steps.length} 步，${(r.ms / 1000).toFixed(1)} 秒）\n\n${steps.join("\n")}`,
+				});
+			}
+
+			// 有建組件就掛上去
+			const mounted = [];
+			for (const c of r.components || []) {
+				if (mountGenerated({ ...c, model: r.model })) mounted.push(c.spec.name);
+			}
+
+			addChatData({ role: "bot", content: r.text || "（沒有回應內容）" });
+
+			if (mounted.length) {
+				addChatData({
+					role: "bot",
+					content: `📊 已把 ${mounted.map((n) => `「${n}」`).join("、")} 加到左側儀表板最上方 👈\n重新整理頁面就會移除。`,
+				});
+			}
+			saveChatLog(chat?.question || "深入分析", r.text || "");
+		} catch (e) {
+			addChatData({
+				role: "bot",
+				content: `分析時出錯了：${e?.response?.data?.message || e.message}`,
+			});
+		} finally {
+			agentLoading.value = false;
+		}
+		return;
+	}
+
 	// 向量檢索找不到現成組件時，改用資料目錄即時生成一個。
 	// 模型只挑表挑欄位（ComponentSpec），SQL 由程式編譯、數值由資料庫算，
 	// 所以這裡拿到的每個數字都來自真實查詢，不是模型寫出來的。
