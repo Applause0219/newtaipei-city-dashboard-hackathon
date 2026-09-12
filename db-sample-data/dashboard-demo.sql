@@ -1,25 +1,3 @@
---
--- PostgreSQL database dump
---
-
--- Dumped from database version 15.10
--- Dumped by pg_dump version 15.12 (Ubuntu 15.12-1.pgdg22.04+1)
-
-SET statement_timeout = 0;
-SET lock_timeout = 0;
-SET idle_in_transaction_session_timeout = 0;
-SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
-SELECT pg_catalog.set_config('search_path', '', false);
-SET check_function_bodies = false;
-SET xmloption = content;
-SET client_min_messages = warning;
-SET row_security = off;
-
-SET default_tablespace = '';
-
-SET default_table_access_method = heap;
-
---
--- PostgreSQL database dump complete
---
+version https://git-lfs.github.com/spec/v1
+oid sha256:c2699f3c0131d94d169c57f8acf513a7f84711d66c1566dee9d84ee42998cb3c
+size 655858949
