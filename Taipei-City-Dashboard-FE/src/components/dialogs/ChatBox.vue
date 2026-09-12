@@ -28,6 +28,7 @@ const TOOL_LABEL = {
 	query_indicator: "查詢實際數值",
 	correlate_indicators: "計算相關係數",
 	compare_indicators: "計算比例與排名",
+	compare_periods: "計算期間變化",
 	list_official_components: "比對官方既有組件",
 	build_component: "建立組件",
 };

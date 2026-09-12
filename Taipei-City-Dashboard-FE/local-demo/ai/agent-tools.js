@@ -418,6 +418,82 @@ export function buildTools(catalog, onCall = () => {}) {
 		},
 	};
 
+	// ── 3d. 同一個指標、兩個期間的變化：差額與排名一樣交給 SQL ──
+	//
+	// 「過去五年流失最多的是哪幾區」這類問題，模型原本是自己相減再排名。
+	// 2026-09-12 實測：29 個區的數字它全部查到了，但它列表格時是照人口大小排，
+	// 只對表格裡看到的那幾個區做減法，於是絕對流失第 5 名寫成新店（-6,632），
+	// 真正的第 5 名是土城（-7,311），蘆洲（-7,031）也被漏掉。
+	// 這跟 compare_indicators 是同一類錯，只是衍生的維度從「兩個指標」換成「兩個期間」。
+	const comparePeriods = {
+		name: "compare_periods",
+		label: "算期間變化",
+		description:
+			"同一個指標在兩個期間之間，各行政區的變化量與變化率，由資料庫算好並排序。\n" +
+			"**「過去N年變化」「流失最多」「成長最快」「哪幾區在減少」這類問題一律用這個，" +
+			"不要自己相減也不要自己排名。**\n" +
+			"不填 from / to 就自動用最早與最新的期間。回傳依變化量由小到大（流失最多在最前面）。",
+		parameters: {
+			type: "object",
+			properties: {
+				indicator: SELECTOR_SCHEMA,
+				from: { type: "string", description: "起始期間，例如 2021-01-01。省略＝最早一期" },
+				to: { type: "string", description: "結束期間，例如 2026-01-01。省略＝最新一期" },
+			},
+			required: ["indicator"],
+		},
+		async execute(_id, p) {
+			const base = { ...(p?.indicator || {}) };
+			// 先問這個指標到底有哪些期間，from / to 才有得挑
+			const probe = await resolveSelector({ ...base, period: "all" }, { forDistrict: true });
+			if (probe.error) {
+				note("compare_periods", { 指標: base.indicator_id }, "被擋下");
+				return result(probe);
+			}
+			const periods = (await query(
+				`SELECT DISTINCT period_start::text AS p FROM public.youth_fact_named
+				 ${probe.where} ORDER BY 1`)).map((r) => r.p);
+			if (periods.length < 2) {
+				note("compare_periods", { 指標: base.indicator_id }, `只有 ${periods.length} 個期間`);
+				return result({ error: "這個指標只有一個期間，沒有變化可以算", periods });
+			}
+			const from = p?.from ? String(p.from) : periods[0];
+			const to = p?.to ? String(p.to) : periods[periods.length - 1];
+			for (const [name, v] of [["from", from], ["to", to]]) {
+				if (!periods.includes(v)) {
+					note("compare_periods", { 指標: base.indicator_id }, `沒有 ${v} 這一期`);
+					return result({ error: `${name}=${v} 不是這個指標有的期間`, available_periods: periods });
+				}
+			}
+
+			const a = await resolveSelector({ ...base, period: from }, { forDistrict: true });
+			const b = await resolveSelector({ ...base, period: to }, { forDistrict: true });
+			const rows = await query(`
+				WITH a AS (SELECT area_name, sum(value) v FROM public.youth_fact_named ${a.where} GROUP BY 1),
+				     b AS (SELECT area_name, sum(value) v FROM public.youth_fact_named ${b.where} GROUP BY 1)
+				SELECT a.area_name AS area,
+				       round(a.v::numeric, 2) AS from_value,
+				       round(b.v::numeric, 2) AS to_value,
+				       round((b.v - a.v)::numeric, 2) AS diff,
+				       round(((b.v - a.v) / nullif(a.v, 0) * 100)::numeric, 2) AS pct_change
+				FROM a JOIN b USING (area_name)
+				ORDER BY diff ASC`);
+			const drop = rows.filter((r) => Number(r.diff) < 0).length;
+			note("compare_periods",
+				{ 指標: a.applied.indicator_id, 期間: `${from} → ${to}` },
+				`${rows.length} 個區，${drop} 個減少`);
+			return result({
+				indicator: a.applied.indicator_id, from, to,
+				applied: { dataset_id: a.applied.dataset_id, area_level: a.applied.area_level,
+					gender: a.applied.gender, age: a.applied.age },
+				available_periods: periods,
+				ranked_by_diff: rows,
+				note: "ranked_by_diff 已依變化量由小到大排好（負最多＝流失最多在最前面）。"
+					+ "要看變化率就自己看 pct_change 欄位，但**排名一律照這份清單**，不要重排也不要只取你看過的幾個區。",
+			}, { n: rows.length });
+		},
+	};
+
 	// ── 4. 建組件：走的是既有那條決定性管線 ──
 	const buildComponent = {
 		name: "build_component",
@@ -520,7 +596,7 @@ export function buildTools(catalog, onCall = () => {}) {
 
 	return {
 		tools: [searchIndicators, inspectIndicator, queryIndicator,
-			correlateIndicators, compareIndicators,
+			correlateIndicators, compareIndicators, comparePeriods,
 			buildComponent, listOfficial, listDomains],
 		trace,
 	};
