@@ -1,1076 +1,428 @@
+<!-- Developed by Taipei Urban Intelligence Center 2026 -->
 <script setup>
-import { computed, ref } from "vue";
-import { hexToRGB } from "../../assets/utilityFunctions/colorConvert";
-import SankeyCanvas from "./SankeyCanvas.vue";
-// import { useDialogStore } from "../../store/dialogStore.js";
-
-// ── 流量篩選(legend range slider)state ──────────────────────────────────
-const filterMin = ref(null); // null = 尚未使用者手動設定,採用完整範圍
-const filterMax = ref(null);
-let activeThumb = null; // 'min' | 'max'
-let activeTrackEl = null;
-
-function thumbLeftPx(pct) {
-	return LEGEND_THUMB_R + pct * (LEGEND_TRACK_W - LEGEND_THUMB_R * 2);
-}
-
-function formatValue(v) {
-	if (v == null || Number.isNaN(v)) return "-";
-	const abs = Math.abs(v);
-	if (abs >= 1_000_000)
-		return (v / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
-	if (abs >= 1_000) return (v / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
-	return String(Math.round(v));
-}
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 const props = defineProps([
 	"chart_config",
 	"activeChart",
 	"series",
 	"map_config",
-	// "map_filter",
-	// "map_filter_on",
+	"map_filter",
+	"map_filter_on",
 ]);
 
-// const dialogStore = useDialogStore();
+const wrapRef = ref(null);
+const chartWidth = ref(860);
+const chartPixelHeight = ref(220);
+let resizeObserver = null;
 
-// ── parsed series data ──────────────────────────────────────────────────────────────
-const parsed_series = {
-	categories: props.chart_config?.categories,
-	data: props.series,
-};
-
-// ── Constants ──────────────────────────────────────────────────────────────
-const NODE_W = 16;
-const GAP = 4;
-const isMobile =
-	typeof window !== "undefined" &&
-	window.matchMedia?.("(max-width: 770px)").matches;
-const LEGEND_TRACK_W = isMobile ? 104 : 140;
-const LEGEND_THUMB_R = 3; // 對應長方形寬度(6px)的一半
-const PAD_TOP = isMobile ? 28 : 36;
-const PAD_BOT = isMobile ? 0 : 6;
-const PAD_L = 250;
-const PAD_R = 250;
-const BASE_SVG_H = isMobile ? 420 : 620;
-const TOP_N = 25;
-const OTHER_LABEL = "其他";
-const NC = darken(props.chart_config.color?.[0], 25) ?? "#6b8fa3";
-const MIN_LABEL_GAP = isMobile ? 22 : 16;
-const MIN_NODE_H = isMobile ? 14 : 18;
-const EXTRA_NODE_H = isMobile ? 12 : 16;
-
-const COLOR_LOW = hexToRGB(props.chart_config.color?.[0] ?? "#3a6ea5");
-const COLOR_HIGH = hexToRGB(props.chart_config.color?.[1] ?? "#e05c5c");
-const colorLowCss = `rgb(${+COLOR_LOW.r},${+COLOR_LOW.g},${+COLOR_LOW.b})`;
-const colorHighCss = `rgb(${+COLOR_HIGH.r},${+COLOR_HIGH.g},${+COLOR_HIGH.b})`;
-
-// ── State ──────────────────────────────────────────────────────────────────
-const wrapperRef = ref(null);
-const hoveredTip = ref(null);
-const tipX = ref(0);
-const tipY = ref(0);
-const tipOnLeft = ref(false);
-const isExpanded = ref(false);
-const TOOLTIP_OFFSET_X = 14;
-const TOOLTIP_OFFSET_Y = -10;
-const TOOLTIP_EDGE_PAD = 12;
-const TOOLTIP_MAX_W = 320;
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-function darken(hex, percent = 20) {
-	const c = hex ?? "#6b8fa3";
-
-	const num = parseInt(c.slice(1), 16);
-	let r = (num >> 16) & 255;
-	let g = (num >> 8) & 255;
-	let b = num & 255;
-
-	r = Math.floor(r * (1 - percent / 100));
-	g = Math.floor(g * (1 - percent / 100));
-	b = Math.floor(b * (1 - percent / 100));
-
-	return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+function hexToRgb(hex) {
+	const s = String(hex || "").replace("#", "");
+	if (s.length !== 6) return null;
+	const n = Number.parseInt(s, 16);
+	if (!Number.isFinite(n)) return null;
+	return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
-function flowColor(t) {
-	const r = Math.round(+COLOR_LOW.r + (+COLOR_HIGH.r - +COLOR_LOW.r) * t);
-	const g = Math.round(+COLOR_LOW.g + (+COLOR_HIGH.g - +COLOR_LOW.g) * t);
-	const b = Math.round(+COLOR_LOW.b + (+COLOR_HIGH.b - +COLOR_LOW.b) * t);
-	return `rgb(${r},${g},${b})`;
+function lighten(hex, ratio = 0.25) {
+	const rgb = hexToRgb(hex);
+	if (!rgb) return hex;
+	const r = Math.round(rgb.r + (255 - rgb.r) * ratio);
+	const g = Math.round(rgb.g + (255 - rgb.g) * ratio);
+	const b = Math.round(rgb.b + (255 - rgb.b) * ratio);
+	return `rgb(${r}, ${g}, ${b})`;
 }
 
-function allocateLinkHeights(entries, totalHeight, minThickness = 1) {
-	if (!entries.length || totalHeight <= 0) return new Map();
+function normalizeRows(raw) {
+	if (Array.isArray(raw)) return raw;
+	if (!raw || typeof raw !== "object") return [];
 
-	const minSafeThickness =
-		entries.length * minThickness <= totalHeight
-			? minThickness
-			: totalHeight / entries.length;
+	// Common API wrappers
+	const wrapped =
+		raw.data || raw.rows || raw.items || raw.series || raw.result || null;
+	if (Array.isArray(wrapped)) return wrapped;
 
-	const allocations = new Map();
-	const remaining = entries.map((entry) => ({ ...entry }));
-	let remainingHeight = totalHeight;
-
-	while (remaining.length) {
-		const remainingValue = remaining.reduce(
-			(sum, entry) => sum + entry.value,
-			0,
-		);
-		if (remainingValue <= 0 || remainingHeight <= 0) {
-			for (const entry of remaining) {
-				allocations.set(entry.key, 0);
-			}
-			break;
-		}
-
-		const forced = remaining.filter(
-			(entry) =>
-				(entry.value / remainingValue) * remainingHeight <
-				minSafeThickness,
-		);
-
-		if (!forced.length) {
-			for (const entry of remaining) {
-				allocations.set(
-					entry.key,
-					(entry.value / remainingValue) * remainingHeight,
-				);
-			}
-			break;
-		}
-
-		for (const entry of forced) {
-			allocations.set(entry.key, minSafeThickness);
-			remainingHeight -= minSafeThickness;
-		}
-
-		const forcedKeys = new Set(forced.map((entry) => entry.key));
-		for (let i = remaining.length - 1; i >= 0; i--) {
-			if (forcedKeys.has(remaining[i].key)) {
-				remaining.splice(i, 1);
-			}
-		}
+	// Columnar payload fallback: { x_axis:[], y_axis:[], data:[] }
+	if (
+		Array.isArray(raw.x_axis) &&
+		Array.isArray(raw.y_axis) &&
+		Array.isArray(raw.data)
+	) {
+		const n = Math.min(raw.x_axis.length, raw.y_axis.length, raw.data.length);
+		return Array.from({ length: n }, (_, i) => ({
+			x_axis: raw.x_axis[i],
+			y_axis: raw.y_axis[i],
+			data: raw.data[i],
+			color: Array.isArray(raw.color) ? raw.color[i] : null,
+		}));
 	}
 
-	return allocations;
+	return [];
 }
 
-function positionNodes(topList, xPos, availH) {
-	if (!topList.length) return [];
-	const total = topList.reduce((s, [, v]) => s + v, 0);
-	const fillH = availH - GAP * (topList.length - 1);
-	let y = PAD_TOP;
-	return topList.map(([name, flow]) => {
-		const h = Math.max(MIN_NODE_H, (flow / total) * fillH);
-		const node = { name, flow, x: xPos, y, h };
-		y += h + GAP;
-		return node;
-	});
-}
-
-function onPathMouseMove({ event, tip }) {
-	hoveredTip.value = tip;
-	tipX.value = event.clientX;
-	tipY.value = event.clientY;
-	const rect = wrapperRef.value?.getBoundingClientRect();
-	tipOnLeft.value = rect ? event.clientX > rect.left + rect.width / 2 : false;
-}
-
-function onPathMouseLeave() {
-	hoveredTip.value = null;
-}
-
-const tooltipStyle = computed(() => {
-	if (!hoveredTip.value) return {};
-
-	const viewportW =
-		typeof window !== "undefined" ? window.innerWidth : Number.POSITIVE_INFINITY;
-	const viewportH =
-		typeof window !== "undefined" ? window.innerHeight : Number.POSITIVE_INFINITY;
-	const maxWidth = Math.min(TOOLTIP_MAX_W, Math.max(180, viewportW - TOOLTIP_EDGE_PAD * 2));
-	const estimatedHeight = 72;
-	const preferredLeft = tipOnLeft.value
-		? tipX.value - TOOLTIP_OFFSET_X - maxWidth
-		: tipX.value + TOOLTIP_OFFSET_X;
-	const clampedLeft = Math.min(
-		Math.max(TOOLTIP_EDGE_PAD, preferredLeft),
-		Math.max(TOOLTIP_EDGE_PAD, viewportW - maxWidth - TOOLTIP_EDGE_PAD),
-	);
-	const preferredTop = tipY.value + TOOLTIP_OFFSET_Y;
-	const clampedTop = Math.min(
-		Math.max(TOOLTIP_EDGE_PAD, preferredTop),
-		Math.max(TOOLTIP_EDGE_PAD, viewportH - estimatedHeight - TOOLTIP_EDGE_PAD),
-	);
-
-	return {
-		left: `${clampedLeft}px`,
-		top: `${clampedTop}px`,
-		maxWidth: `${maxWidth}px`,
-	};
+const sankeyLinks = computed(() => {
+	const raw = props.series;
+	const fromArr = Array.isArray(raw?.edges) ? raw.edges : normalizeRows(raw);
+	return fromArr
+		.map((it) => ({
+			source: String(it.source ?? it.from ?? it.x_axis ?? it.x ?? "").trim(),
+			target: String(
+				it.target ??
+					it.to ??
+					it.y_axis ??
+					(typeof it.y === "string" ? it.y : "") ??
+					"",
+			).trim(),
+			value: Number(it.value ?? it.data ?? it.y ?? 0),
+			color: it.color ? String(it.color) : null,
+		}))
+		.filter((l) => l.source && l.target && Number.isFinite(l.value) && l.value > 0);
 });
 
-function handleExpand() {
-	// if (window.innerWidth < 770) {
-	// 	dialogStore.showNotification("fail","放大檢視僅限電腦版！");
-	// 	return;
-	// }
-	isExpanded.value = true;
+const palette = computed(() => {
+	const c = props.chart_config?.color;
+	return Array.isArray(c) && c.length > 0 ? c : ["#4EA3FF", "#F5A623"];
+});
+
+function computeLevels(links) {
+	const nodes = new Set();
+	const indeg = new Map();
+	const out = new Map();
+	for (const l of links) {
+		nodes.add(l.source);
+		nodes.add(l.target);
+		indeg.set(l.target, (indeg.get(l.target) || 0) + 1);
+		indeg.set(l.source, indeg.get(l.source) || 0);
+		if (!out.has(l.source)) out.set(l.source, []);
+		out.get(l.source).push(l.target);
+	}
+	const q = [];
+	for (const n of nodes) if ((indeg.get(n) || 0) === 0) q.push(n);
+	const level = new Map();
+	for (const n of nodes) level.set(n, 0);
+	while (q.length) {
+		const n = q.shift();
+		const nexts = out.get(n) || [];
+		for (const m of nexts) {
+			level.set(m, Math.max(level.get(m) || 0, (level.get(n) || 0) + 1));
+			indeg.set(m, (indeg.get(m) || 0) - 1);
+			if ((indeg.get(m) || 0) === 0) q.push(m);
+		}
+	}
+	let maxL = 0;
+	for (const n of nodes) maxL = Math.max(maxL, level.get(n) || 0);
+	return { level, maxL, nodes: [...nodes] };
 }
 
-// ── Layout ─────────────────────────────────────────────────────────────────
-const layout = computed(() => {
-	const raw = parsed_series;
-
-	const layerLabels = raw.categories ?? [];
-	const links = (raw.data ?? []).filter(
-		(l) =>
-			l.source_layer != null &&
-			l.target_layer != null &&
-			l.source_layer !== l.target_layer,
-	);
-	const rawValues = links.map((l) => l.value);
-	const rawMinV = rawValues.length ? Math.min(...rawValues) : 0;
-	const rawMaxV = rawValues.length ? Math.max(...rawValues) : 1;
-
-	const n =
-		layerLabels.length ||
-		links.reduce((m, l) => Math.max(m, l.source_layer, l.target_layer), 0) +
-			1;
-
-	if (n < 2)
+const sankeyLayout = computed(() => {
+	const links = sankeyLinks.value;
+	if (!links.length) {
 		return {
-			svgW: 800,
-			xPositions: [],
-			nodesPerLayer: [],
-			layerLabels,
-			paths: [],
-			n,
-			padTop: PAD_TOP,
-			valueRange: { min: rawMinV, max: rawMaxV },
+			links: [],
+			nodes: [],
+			width: chartWidth.value,
+			height: Math.max(170, chartPixelHeight.value - 4),
 		};
+	}
 
-	const svgW = Math.max(800, PAD_L + PAD_R + n * 180);
-	const usableW = svgW - PAD_L - PAD_R - NODE_W;
-	const xPositions = Array.from({ length: n }, (_, i) =>
-		Math.round(PAD_L + (n === 1 ? 0 : (i / (n - 1)) * usableW)),
-	);
+	const W = chartWidth.value;
+	const H = Math.max(170, chartPixelHeight.value - 4);
+	const pad = { left: 14, right: 20, top: 10, bottom: 10 };
+	const nodeW = Number(props.chart_config?.node_width) || 20;
+	const nodeGap = Number(props.chart_config?.node_gap) || 12;
 
-	const nodeFlow = Array.from({ length: n }, () => new Map());
+	const { level, maxL, nodes } = computeLevels(links);
+	const layerCfg = Number(props.chart_config?.sankey_layers);
+	const layerCount = Number.isFinite(layerCfg) && layerCfg > 1 ? Math.floor(layerCfg) : maxL + 1;
+	const toLayer = (l) =>
+		maxL <= 0
+			? 0
+			: Math.round((l / maxL) * Math.max(0, layerCount - 1));
+
+	const layerMap = new Map();
+	const nodeStat = new Map();
+	const incomingByNode = new Map();
+	const parentOrder = new Map();
+	for (const n of nodes) nodeStat.set(n, { in: 0, out: 0 });
 	for (const l of links) {
-		nodeFlow[l.source_layer].set(
-			l.source,
-			(nodeFlow[l.source_layer].get(l.source) || 0) + l.value,
+		nodeStat.get(l.source).out += l.value;
+		nodeStat.get(l.target).in += l.value;
+		if (!incomingByNode.has(l.target)) incomingByNode.set(l.target, []);
+		incomingByNode.get(l.target).push(l);
+	}
+	for (const n of nodes) {
+		const layer = toLayer(level.get(n) || 0);
+		if (!layerMap.has(layer)) layerMap.set(layer, []);
+		layerMap.get(layer).push(n);
+	}
+
+	const roots = nodes.filter((n) => (incomingByNode.get(n) || []).length === 0);
+	const firstLayer = (layerMap.get(1) || []).slice();
+	const branchColorByFirstNode = new Map();
+	const baseBlue = "#4EA3FF";
+	const baseOrange = "#F5A623";
+	if (firstLayer.length > 0) {
+		const blueNode =
+			firstLayer.find((n) => String(n).includes("通勤")) || firstLayer[0];
+		const orangeNode =
+			firstLayer.find((n) => String(n).includes("其他") && n !== blueNode) ||
+			firstLayer.find((n) => n !== blueNode) ||
+			firstLayer[0];
+		branchColorByFirstNode.set(blueNode, baseBlue);
+		branchColorByFirstNode.set(orangeNode, baseOrange);
+	}
+	for (let i = 2; i < firstLayer.length; i++) {
+		if (!branchColorByFirstNode.has(firstLayer[i])) {
+			branchColorByFirstNode.set(firstLayer[i], palette.value[i % palette.value.length]);
+		}
+	}
+	firstLayer.forEach((n, i) => parentOrder.set(n, i));
+
+	const branchByNode = new Map();
+	for (const r of roots) branchByNode.set(r, "__root__");
+	for (const n of firstLayer) branchByNode.set(n, n);
+	const sortedLayers = [...layerMap.keys()].sort((a, b) => a - b);
+	for (const layer of sortedLayers) {
+		const arr = layerMap.get(layer) || [];
+		for (const n of arr) {
+			if (branchByNode.has(n)) continue;
+			const ins = incomingByNode.get(n) || [];
+			if (!ins.length) continue;
+			ins.sort((a, b) => b.value - a.value);
+			const parent = ins[0].source;
+			branchByNode.set(n, branchByNode.get(parent) || parent);
+		}
+	}
+
+	for (const [layer, arr] of layerMap.entries()) {
+		arr.sort((a, b) => {
+			if (layer <= 1) return 0;
+			const aIn = incomingByNode.get(a) || [];
+			const bIn = incomingByNode.get(b) || [];
+			const aParent = aIn.length ? aIn.sort((x, y) => y.value - x.value)[0].source : "";
+			const bParent = bIn.length ? bIn.sort((x, y) => y.value - x.value)[0].source : "";
+			const aPo = parentOrder.has(aParent) ? parentOrder.get(aParent) : 999;
+			const bPo = parentOrder.has(bParent) ? parentOrder.get(bParent) : 999;
+			if (aPo !== bPo) return aPo - bPo;
+			if (aParent !== bParent) return String(aParent).localeCompare(String(bParent));
+			return (nodeStat.get(b).in || 0) - (nodeStat.get(a).in || 0);
+		});
+	}
+
+	const maxNodeValue = Math.max(
+		1,
+		...nodes.map((n) => Math.max(nodeStat.get(n).in, nodeStat.get(n).out)),
+	);
+	const maxNodesInLayer = Math.max(1, ...[...layerMap.values()].map((arr) => arr.length));
+	const usableH = H - pad.top - pad.bottom - nodeGap * (maxNodesInLayer - 1);
+	const pxPerVal = Math.max(2 / maxNodeValue, usableH / maxNodeValue);
+
+	const xStep = layerCount <= 1 ? 0 : (W - pad.left - pad.right - nodeW) / (layerCount - 1);
+	const nodePos = new Map();
+	for (const [layer, arr] of layerMap.entries()) {
+		const heights = arr.map((n) =>
+			Math.max(7, Math.max(nodeStat.get(n).in, nodeStat.get(n).out) * pxPerVal),
 		);
-		nodeFlow[l.target_layer].set(
-			l.target,
-			(nodeFlow[l.target_layer].get(l.target) || 0) + l.value,
-		);
-	}
-
-	// 逐層選取 TOP N:
-	// 第一層先取 TOP N; 後續各層也限制 TOP N,但超出的節點會併入「其他」,
-	// 讓圖表高度可控,同時保留往後層的流向總量。
-	const topSetPerLayer = Array.from({ length: n }, () => new Set());
-	const reachableSetPerLayer = Array.from({ length: n }, () => new Set());
-	const hasOtherPerLayer = Array.from({ length: n }, () => false);
-	const topPerLayer = [];
-
-	const getOtherName = (layerIndex) =>
-		`${OTHER_LABEL}${layerLabels[layerIndex]}`;
-
-	const mapNodeName = (layerIndex, name) => {
-		if (topSetPerLayer[layerIndex].has(name)) return name;
-		if (
-			reachableSetPerLayer[layerIndex].has(name) &&
-			hasOtherPerLayer[layerIndex]
-		) {
-			return getOtherName(layerIndex);
-		}
-		return null;
-	};
-
-	for (let i = 0; i < n; i++) {
-		let candidates;
-
-		if (i === 0) {
-			candidates = [...nodeFlow[0].entries()].sort((a, b) => b[1] - a[1]);
-		} else {
-			const flowFromSelected = new Map();
-			for (const l of links) {
-				if (l.target_layer !== i) continue;
-				if (!reachableSetPerLayer[l.source_layer].has(l.source)) continue;
-				flowFromSelected.set(
-					l.target,
-					(flowFromSelected.get(l.target) || 0) + l.value,
-				);
-			}
-			candidates = [...flowFromSelected.entries()].sort(
-				(a, b) => b[1] - a[1],
-			);
-		}
-
-		const top = candidates.slice(0, TOP_N);
-		const overflow = candidates.slice(TOP_N);
-		const displayed = [...top];
-
-		if (i > 0 && overflow.length) {
-			displayed.push([
-				getOtherName(i),
-				overflow.reduce((sum, [, value]) => sum + value, 0),
-			]);
-			hasOtherPerLayer[i] = true;
-		}
-
-		topPerLayer.push(displayed);
-		topSetPerLayer[i] = new Set(top.map(([name]) => name));
-		reachableSetPerLayer[i] = new Set(
-			(i === 0 ? top : candidates).map(([name]) => name),
-		);
-	}
-
-	const maxNodeCount = topPerLayer.reduce(
-		(max, layer) => Math.max(max, layer.length),
-		0,
-	);
-	const minAvailH =
-		maxNodeCount > 0
-			? maxNodeCount * MIN_NODE_H +
-				maxNodeCount * EXTRA_NODE_H +
-				Math.max(0, maxNodeCount - 1) * MIN_LABEL_GAP
-			: 0;
-	const svgH = Math.max(BASE_SVG_H, PAD_TOP + PAD_BOT + minAvailH);
-	const availH = svgH - PAD_TOP - PAD_BOT;
-
-	const nodesPerLayer = topPerLayer.map((top, i) =>
-		positionNodes(top, xPositions[i], availH),
-	);
-	const mapPerLayer = nodesPerLayer.map(
-		(nodes) => new Map(nodes.map((nd) => [nd.name, nd])),
-	);
-
-	const aggMap = new Map();
-	for (const l of links) {
-		const sl = l.source_layer,
-			tl = l.target_layer;
-		const mappedSource = mapNodeName(sl, l.source);
-		const mappedTarget = mapNodeName(tl, l.target);
-		if (!mappedSource || !mappedTarget) continue;
-		const key = `${sl}|${mappedSource}||${tl}|${mappedTarget}`;
-		const e = aggMap.get(key) ?? {
-			source: mappedSource,
-			source_layer: sl,
-			target: mappedTarget,
-			target_layer: tl,
-			value: 0,
-		};
-		e.value += l.value;
-		aggMap.set(key, e);
-	}
-	const aggLinks = [...aggMap.values()].sort((a, b) => b.value - a.value);
-
-	// ── 統計每個 node 的流入 / 流出總量,掛在 node 物件上供 hover 顯示 ──
-	const inFlowMap = new Map();
-	const outFlowMap = new Map();
-	for (const l of aggLinks) {
-		const outKey = `${l.source_layer}|${l.source}`;
-		outFlowMap.set(outKey, (outFlowMap.get(outKey) || 0) + l.value);
-
-		const inKey = `${l.target_layer}|${l.target}`;
-		inFlowMap.set(inKey, (inFlowMap.get(inKey) || 0) + l.value);
-	}
-
-	for (let layerIndex = 0; layerIndex < nodesPerLayer.length; layerIndex++) {
-		for (const node of nodesPerLayer[layerIndex]) {
-			const key = `${layerIndex}|${node.name}`;
-			const inFlow = Math.round(inFlowMap.get(key) || 0);
-			const outFlow = Math.round(outFlowMap.get(key) || 0);
-
-			node.inFlow = inFlow;
-			node.outFlow = outFlow;
-
-			const bits = [];
-			if (outFlow > 0) bits.push(`流出 ${outFlow.toLocaleString()} 次`);
-			if (inFlow > 0) bits.push(`流入 ${inFlow.toLocaleString()} 次`);
-			node.tip = `${node.name}｜${bits.join("，")}`;
+		const totalH = heights.reduce((a, b) => a + b, 0) + nodeGap * Math.max(0, arr.length - 1);
+		let y = pad.top + (H - pad.top - pad.bottom - totalH) / 2;
+		for (let i = 0; i < arr.length; i++) {
+			const n = arr[i];
+			nodePos.set(n, {
+				id: n,
+				layer,
+				x: pad.left + layer * xStep,
+				y,
+				w: nodeW,
+				h: heights[i],
+				inOffset: 0,
+				outOffset: 0,
+			});
+			y += heights[i] + nodeGap;
 		}
 	}
 
-	const renderedValues = aggLinks.map((l) => l.value);
-	const renderedMinV = renderedValues.length ? Math.min(...renderedValues) : 0;
-	const renderedMaxV = renderedValues.length ? Math.max(...renderedValues) : 1;
-	const normalize = (v) =>
-		renderedMaxV === renderedMinV
-			? 0.5
-			: (v - renderedMinV) / (renderedMaxV - renderedMinV);
-
-	const sourceHeightMap = new Map();
-	const targetHeightMap = new Map();
-	for (let layerIndex = 0; layerIndex < nodesPerLayer.length; layerIndex++) {
-		for (const node of nodesPerLayer[layerIndex]) {
-			const sourceEntries = aggLinks
-				.filter(
-					(link) =>
-						link.source_layer === layerIndex &&
-						link.source === node.name,
-				)
-				.map((link) => ({
-					key: `${link.source_layer}|${link.source}||${link.target_layer}|${link.target}`,
-					value: link.value,
-				}));
-			const targetEntries = aggLinks
-				.filter(
-					(link) =>
-						link.target_layer === layerIndex &&
-						link.target === node.name,
-				)
-				.map((link) => ({
-					key: `${link.source_layer}|${link.source}||${link.target_layer}|${link.target}`,
-					value: link.value,
-				}));
-
-			for (const [key, height] of allocateLinkHeights(
-				sourceEntries,
-				node.h,
-			)) {
-				sourceHeightMap.set(key, height);
-			}
-			for (const [key, height] of allocateLinkHeights(
-				targetEntries,
-				node.h,
-			)) {
-				targetHeightMap.set(key, height);
-			}
-		}
-	}
-
-	const usedRight = nodesPerLayer.map(
-		(nodes) => new Map(nodes.map((nd) => [nd.name, 0])),
-	);
-	const usedLeft = nodesPerLayer.map(
-		(nodes) => new Map(nodes.map((nd) => [nd.name, 0])),
-	);
-
-	const paths = [];
-	for (const l of aggLinks) {
-		const src = mapPerLayer[l.source_layer].get(l.source);
-		const tgt = mapPerLayer[l.target_layer].get(l.target);
-		if (!src || !tgt) continue;
-
-		const linkKey = `${l.source_layer}|${l.source}||${l.target_layer}|${l.target}`;
-		const lh = Math.min(
-			sourceHeightMap.get(linkKey) ?? 0,
-			targetHeightMap.get(linkKey) ?? 0,
-		);
-		if (lh <= 0) continue;
-
-		const sOff = usedRight[l.source_layer].get(l.source);
-		const tOff = usedLeft[l.target_layer].get(l.target);
-		const x1 = src.x + NODE_W,
-			y1 = src.y + sOff;
-		const x2 = tgt.x,
-			y2 = tgt.y + tOff;
-		const mx = (x1 + x2) / 2;
-
-		paths.push({
-			key: linkKey,
-			source: l.source,
-			source_layer: l.source_layer,
-			target: l.target,
-			target_layer: l.target_layer,
-			d: [
-				`M ${x1} ${y1}`,
-				`C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`,
-				`L ${x2} ${y2 + lh}`,
-				`C ${mx} ${y2 + lh} ${mx} ${y1 + lh} ${x1} ${y1 + lh}`,
-				"Z",
-			].join(" "),
-			fill: flowColor(normalize(l.value)),
-			opacity: 0.35 + normalize(l.value) * 0.35,
-			value: l.value,
-			tip:
-				l.target_layer - l.source_layer > 1
-					? `${l.source} → ${l.target}（跨 ${l.target_layer - l.source_layer} 層）：${Math.round(l.value).toLocaleString()} 次`
-					: `${l.source} → ${l.target}：${Math.round(l.value).toLocaleString()} 次`,
+	const linksSorted = links
+		.map((l, i) => ({ ...l, _i: i }))
+		.sort((a, b) => {
+			const sa = nodePos.get(a.source);
+			const sb = nodePos.get(b.source);
+			const ta = nodePos.get(a.target);
+			const tb = nodePos.get(b.target);
+			if (!sa || !sb || !ta || !tb) return 0;
+			if (sa.y !== sb.y) return sa.y - sb.y;
+			return ta.y - tb.y;
 		});
 
-		usedRight[l.source_layer].set(l.source, sOff + lh);
-		usedLeft[l.target_layer].set(l.target, tOff + lh);
-	}
+	const linkPaths = linksSorted.map((l, i) => {
+		const s = nodePos.get(l.source);
+		const t = nodePos.get(l.target);
+		if (!s || !t) return null;
+		const th = Math.max(3, l.value * pxPerVal);
+		const sy = s.y + s.outOffset + th / 2;
+		const ty = t.y + t.inOffset + th / 2;
+		s.outOffset += th;
+		t.inOffset += th;
+		const x1 = s.x + s.w;
+		const x2 = t.x;
+		const isNearlyStraight = Math.abs(sy - ty) < 8;
+		const c = Math.max(30, (x2 - x1) * 0.45);
+		const branch = branchByNode.get(l.source) === "__root__" ? l.target : branchByNode.get(l.source);
+		const baseColor = branchColorByFirstNode.get(branch) || palette.value[i % palette.value.length];
+		const depth = Math.max(0, level.get(l.source) || 0);
+		const strokeSolid = depth <= 0 ? baseColor : lighten(baseColor, 0.28);
+		const targetBranch = branchByNode.get(l.target);
+		const targetBase =
+			branchColorByFirstNode.get(targetBranch) ||
+			branchColorByFirstNode.get(l.target) ||
+			strokeSolid;
+		const strokeTo = Math.max(0, level.get(l.target) || 0) <= 1
+			? targetBase
+			: lighten(targetBase, 0.28);
+		const gradientId = `sankey-grad-${i}-${String(l.source).replace(/[^\w-]/g, "_")}-${String(l.target).replace(/[^\w-]/g, "_")}`;
+		return {
+			id: `${l.source}->${l.target}-${i}`,
+			d: isNearlyStraight
+				? `M ${x1} ${sy} L ${x2} ${ty}`
+				: `M ${x1} ${sy} C ${x1 + c} ${sy}, ${x2 - c} ${ty}, ${x2} ${ty}`,
+			gradientId,
+			strokeSolid,
+			strokeTo,
+			width: th,
+			value: l.value,
+			labelX: (x1 + x2) / 2,
+			labelY: (sy + ty) / 2 - 2,
+			label: th >= 8 ? `${l.value}%` : "",
+		};
+	}).filter(Boolean);
 
-	return {
-		svgW,
-		svgH,
-		xPositions,
-		nodesPerLayer,
-		layerLabels,
-		paths,
-		n,
-		padTop: PAD_TOP,
-		valueRange: { min: rawMinV, max: rawMaxV },
-	};
+	const nodesOut = [...nodePos.values()].map((n, i) => ({
+		...n,
+		fill: (() => {
+			const nodeBranch = branchByNode.get(n.id);
+			const baseColor = branchColorByFirstNode.get(nodeBranch) || palette.value[i % palette.value.length];
+			const d = Math.max(0, level.get(n.id) || 0);
+			if (nodeBranch === "__root__") return lighten(baseBlue, 0.55);
+			return d <= 1 ? baseColor : lighten(baseColor, 0.3);
+		})(),
+		label: n.id,
+		labelX:
+			n.layer === 0
+				? n.x + n.w + 6
+				: n.layer >= layerCount - 1
+					? n.x - 6
+					: n.x + n.w + 6,
+		labelY: n.y + Math.max(12, Math.min(n.h - 2, 14)),
+		labelAnchor:
+			n.layer === 0
+				? "start"
+				: n.layer >= layerCount - 1
+					? "end"
+					: "start",
+		// Keep text clean: thin downstream nodes rely on hover only.
+		showLabel: n.layer <= 1 ? n.h >= 9 : n.h >= 16,
+	}));
+	return { links: linkPaths, nodes: nodesOut, width: W, height: H, maxLayer: layerCount - 1 };
 });
 
-// ── Legend 數值範圍 & 篩選 ────────────────────────────────────────────────
-const valueMin = computed(() => layout.value.valueRange?.min ?? 0);
-const valueMax = computed(() => layout.value.valueRange?.max ?? 1);
+function updateSize() {
+	const host = wrapRef.value;
+	const w = host?.clientWidth || 860;
+	const h = host?.clientHeight || Number(props.chart_config?.height) || 220;
+	chartWidth.value = Math.max(320, w - 2);
+	chartPixelHeight.value = Math.max(170, h - 2);
+}
 
-const effectiveMin = computed(() => filterMin.value ?? valueMin.value);
-const effectiveMax = computed(() => filterMax.value ?? valueMax.value);
-
-const isFiltered = computed(() => {
-	const eps = Math.max(1e-9, (valueMax.value - valueMin.value) * 1e-6);
-	return (
-		effectiveMin.value > valueMin.value + eps ||
-		effectiveMax.value < valueMax.value - eps
-	);
+onMounted(() => {
+	updateSize();
+	resizeObserver = new ResizeObserver(updateSize);
+	if (wrapRef.value) resizeObserver.observe(wrapRef.value);
 });
 
-function pctFromValue(v) {
-	const span = valueMax.value - valueMin.value;
-	if (span <= 0) return 0;
-	return Math.min(1, Math.max(0, (v - valueMin.value) / span));
-}
-
-function valueFromPct(pct) {
-	return valueMin.value + pct * (valueMax.value - valueMin.value);
-}
-
-// 套用篩選:落在區間外的連結淡出(hidden = true),node/版面本身不重排
-const filteredLayout = computed(() => {
-	const eps = Math.max(1e-9, (valueMax.value - valueMin.value) * 1e-6);
-	return {
-		...layout.value,
-		paths: (layout.value.paths ?? []).map((p) => ({
-			...p,
-			hidden:
-				p.value < effectiveMin.value - eps ||
-				p.value > effectiveMax.value + eps,
-		})),
-	};
+onBeforeUnmount(() => {
+	if (resizeObserver) resizeObserver.disconnect();
 });
-
-function pctFromEvent(event, trackEl) {
-	const rect = trackEl.getBoundingClientRect();
-	const clientX = event.touches ? event.touches[0].clientX : event.clientX;
-	const usable = rect.width - LEGEND_THUMB_R * 2;
-	if (usable <= 0) return 0;
-	return Math.min(
-		1,
-		Math.max(0, (clientX - rect.left - LEGEND_THUMB_R) / usable),
-	);
-}
-
-function startDrag(thumb, event) {
-	activeThumb = thumb;
-	activeTrackEl = event.currentTarget.closest(".legend-track");
-	window.addEventListener("mousemove", onDrag);
-	window.addEventListener("mouseup", endDrag);
-	window.addEventListener("touchmove", onDrag, { passive: false });
-	window.addEventListener("touchend", endDrag);
-	event.preventDefault();
-}
-
-function onDrag(event) {
-	if (!activeThumb || !activeTrackEl) return;
-	if (event.cancelable) event.preventDefault();
-
-	const v = valueFromPct(pctFromEvent(event, activeTrackEl));
-
-	if (activeThumb === "min") {
-		filterMin.value = Math.min(v, effectiveMax.value);
-	} else {
-		filterMax.value = Math.max(v, effectiveMin.value);
-	}
-}
-
-function endDrag() {
-	activeThumb = null;
-	activeTrackEl = null;
-	window.removeEventListener("mousemove", onDrag);
-	window.removeEventListener("mouseup", endDrag);
-	window.removeEventListener("touchmove", onDrag);
-	window.removeEventListener("touchend", endDrag);
-}
-
-function resetFilter() {
-	if (!isFiltered.value) return;
-	filterMin.value = null;
-	filterMax.value = null;
-}
 </script>
 
 <template>
-  <div
-    v-if="activeChart === 'SankeyChart'"
-    ref="wrapperRef"
-    class="sankey-wrapper"
-  >
-    <!-- Tooltip -->
-    <div
-      v-if="hoveredTip"
-      class="sankey-tooltip"
-      :style="tooltipStyle"
-    >
-      {{ hoveredTip }}
-    </div>
-
-    <!-- 放大按鈕 -->
-    <button
-      class="expand-btn"
-      title="放大檢視"
-      @click="handleExpand"
-    >
-      <span>⛶</span>
-    </button>
-
-    <!-- 一般檢視 -->
-    <div class="sankey-scroll">
-      <SankeyCanvas
-        :layout="filteredLayout"
-        :svg-h="layout.svgH || BASE_SVG_H"
-        :node-w="NODE_W"
-        :nc="NC"
-        class="sankey-svg"
-        @path-mousemove="onPathMouseMove"
-        @path-mouseleave="onPathMouseLeave"
-        @node-mousemove="onPathMouseMove"
-        @node-mouseleave="onPathMouseLeave"
-      />
-    </div>
-
-    <!-- Legend -->
-    <div class="sankey-legend">
-      <span class="legend-value">{{ formatValue(effectiveMin) }} 次</span>
-      <div
-        class="legend-track"
-        :style="{ width: `${LEGEND_TRACK_W}px` }"
-      >
-        <div
-          class="legend-gradient"
-          :style="`background: linear-gradient(to right, ${colorLowCss}, ${colorHighCss})`"
-        />
-        <div
-          class="legend-mask legend-mask--left"
-          :style="{
-            width: thumbLeftPx(pctFromValue(effectiveMin)) + 'px',
-          }"
-        />
-        <div
-          class="legend-mask legend-mask--right"
-          :style="{
-            width:
-              LEGEND_TRACK_W -
-              thumbLeftPx(pctFromValue(effectiveMax)) +
-              'px',
-          }"
-        />
-        <div
-          class="legend-thumb"
-          :style="{
-            left: thumbLeftPx(pctFromValue(effectiveMin)) + 'px',
-          }"
-          @mousedown="startDrag('min', $event)"
-          @touchstart="startDrag('min', $event)"
-        />
-        <div
-          class="legend-thumb"
-          :style="{
-            left: thumbLeftPx(pctFromValue(effectiveMax)) + 'px',
-          }"
-          @mousedown="startDrag('max', $event)"
-          @touchstart="startDrag('max', $event)"
-        />
-      </div>
-      <span class="legend-value">{{ formatValue(effectiveMax) }} 次</span>
-      <button
-        class="legend-reset-btn"
-        :class="{ 'legend-reset-btn--disabled': !isFiltered }"
-        :disabled="!isFiltered"
-        title="清除篩選"
-        @click="resetFilter"
-      >
-        重置
-      </button>
-    </div>
-
-    <!-- Fullscreen overlay -->
-    <Teleport to="body">
-      <div
-        v-if="isExpanded"
-        class="sankey-overlay"
-        @click.self="isExpanded = false"
-      >
-        <div class="sankey-modal">
-          <button
-            class="modal-close-btn"
-            @click="isExpanded = false"
-          >
-            ✕
-          </button>
-
-          <!-- Tooltip（共用同一份 ref） -->
-          <div
-            v-if="hoveredTip"
-            class="sankey-tooltip"
-            :style="tooltipStyle"
-          >
-            {{ hoveredTip }}
-          </div>
-
-          <!-- 放大檢視 -->
-          <div class="sankey-scroll">
-            <SankeyCanvas
-              :layout="filteredLayout"
-              :svg-h="layout.svgH || BASE_SVG_H"
-              :node-w="NODE_W"
-              :nc="NC"
-              class="sankey-svg-full"
-              @path-mousemove="onPathMouseMove"
-              @path-mouseleave="onPathMouseLeave"
-              @node-mousemove="onPathMouseMove"
-              @node-mouseleave="onPathMouseLeave"
-            />
-          </div>
-
-          <!-- Legend -->
-          <div class="sankey-legend">
-            <span class="legend-value">{{
-              formatValue(effectiveMin)
-            }} 次</span>
-            <div
-              class="legend-track"
-              :style="{ width: `${LEGEND_TRACK_W}px` }"
-            >
-              <div
-                class="legend-gradient"
-                :style="`background: linear-gradient(to right, ${colorLowCss}, ${colorHighCss})`"
-              />
-              <div
-                class="legend-mask legend-mask--left"
-                :style="{
-                  width:
-                    thumbLeftPx(
-                      pctFromValue(effectiveMin),
-                    ) + 'px',
-                }"
-              />
-              <div
-                class="legend-mask legend-mask--right"
-                :style="{
-                  width:
-                    LEGEND_TRACK_W -
-                    thumbLeftPx(
-                      pctFromValue(effectiveMax),
-                    ) +
-                    'px',
-                }"
-              />
-              <div
-                class="legend-thumb"
-                :style="{
-                  left:
-                    thumbLeftPx(
-                      pctFromValue(effectiveMin),
-                    ) + 'px',
-                }"
-                @mousedown="startDrag('min', $event)"
-                @touchstart="startDrag('min', $event)"
-              />
-              <div
-                class="legend-thumb"
-                :style="{
-                  left:
-                    thumbLeftPx(
-                      pctFromValue(effectiveMax),
-                    ) + 'px',
-                }"
-                @mousedown="startDrag('max', $event)"
-                @touchstart="startDrag('max', $event)"
-              />
-            </div>
-            <span class="legend-value">{{
-              formatValue(effectiveMax)
-            }} 次</span>
-            <button
-              class="legend-reset-btn"
-              :class="{
-                'legend-reset-btn--disabled': !isFiltered,
-              }"
-              :disabled="!isFiltered"
-              title="清除篩選"
-              @click="resetFilter"
-            >
-              重置
-            </button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-  </div>
+	<div v-if="activeChart === 'SankeyChart'" ref="wrapRef" class="sankeychart">
+		<svg :viewBox="`0 0 ${sankeyLayout.width} ${sankeyLayout.height}`" width="100%" height="100%">
+			<defs>
+				<linearGradient
+					v-for="link in sankeyLayout.links"
+					:key="`${link.id}-grad`"
+					:id="link.gradientId"
+					x1="0%"
+					y1="0%"
+					x2="100%"
+					y2="0%"
+				>
+					<stop offset="0%" :stop-color="link.strokeSolid" />
+					<stop offset="100%" :stop-color="link.strokeTo" />
+				</linearGradient>
+			</defs>
+			<g>
+				<path
+					v-for="link in sankeyLayout.links"
+					:key="link.id"
+					:d="link.d"
+					fill="none"
+					:stroke="`url(#${link.gradientId})`"
+					:stroke-opacity="0.42"
+					:stroke-width="link.width"
+					stroke-linecap="butt"
+				>
+					<title>{{ `${link.id.split("->")[1]?.split("-")[0] || ""}：${link.value}%` }}</title>
+				</path>
+			</g>
+			<g>
+				<g v-for="node in sankeyLayout.nodes" :key="node.id">
+					<rect :x="node.x" :y="node.y" :width="node.w" :height="node.h" rx="0" :fill="node.fill" fill-opacity="0.95" />
+					<text
+						v-if="node.showLabel"
+						:x="node.labelX"
+						:y="node.labelY"
+						:text-anchor="node.labelAnchor"
+						class="sankeychart__label"
+					>
+						{{ node.label }}
+					</text>
+				</g>
+			</g>
+		</svg>
+		<div v-if="sankeyLayout.links.length < 2" class="sankeychart__hint">
+			資料不足或格式不符（需至少 2 條有效流向）
+		</div>
+	</div>
 </template>
 
 <style scoped lang="scss">
-.sankey-wrapper {
+.sankeychart {
+	width: 100%;
+	height: 100%;
 	position: relative;
-	width: 100%;
-	height: 90%;
-	display: flex;
-	gap: 4px;
-	flex-direction: column;
-	justify-content: center;
-	background: transparent;
 }
 
-.expand-btn {
-	position: absolute;
-	top: 4px;
-	right: 4px;
-	z-index: 5;
-	background: #282a2c;
-	border: 1px solid #555;
-	border-radius: 4px;
-	color: var(--color-text-secondary, #aaa);
-	width: 26px;
-	height: 26px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
-	font-size: 14px;
-	line-height: 1;
-	padding: 0;
-	transition:
-		border-color 0.15s,
-		color 0.15s;
-
-	&:hover {
-		border-color: #aaa;
-		color: #fff;
-	}
-}
-
-.sankey-svg {
-	width: 100%;
-	height: auto;
-	display: block;
-}
-
-.sankey-scroll {
-	min-height: 0;
-	overflow-y: auto;
-	overflow-x: hidden;
-}
-
-.sankey-tooltip {
-	position: fixed;
-	background: #282a2c;
-	box-shadow: 0px 0px 5px black;
-	color: #fff;
-	padding: 3px 12px;
-	border: 1px solid #666;
-	border-radius: 4px;
-	font-size: 0.875rem;
+.sankeychart__label {
+	font-size: 12px;
+	font-weight: 700;
+	fill: #f3f6fb;
+	paint-order: stroke;
+	stroke: rgba(23, 28, 36, 0.8);
+	stroke-width: 1.4px;
+	stroke-linejoin: round;
 	pointer-events: none;
-	white-space: normal;
-	word-break: break-word;
-	overflow-wrap: anywhere;
-	line-height: 1.4;
-	z-index: 9999;
+	letter-spacing: 0.2px;
 }
 
-.sankey-legend {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	justify-content: center;
-	font-size: 0.72rem;
-	color: var(--color-text-secondary, #aaa);
-	flex-shrink: 0;
-	margin: 12px;
-	min-width: 0;
-}
-
-.legend-value {
-	font-size: 14px;
-	white-space: nowrap;
-	min-width: 32px;
-	text-align: center;
-	font-variant-numeric: tabular-nums;
-}
-
-.legend-track {
-	position: relative;
-	height: 15px;
-	touch-action: none;
-	user-select: none;
-	-webkit-user-select: none;
-	-webkit-touch-callout: none; // 防止 iOS 長按跳出選單/預覽
-}
-
-.legend-gradient {
+.sankeychart__hint {
 	position: absolute;
 	left: 0;
 	right: 0;
-	top: 2px;
-	height: 10px;
-	border-radius: 3px;
-}
-
-.legend-mask {
-	position: absolute;
-	top: 2px;
-	height: 10px;
-	background: rgba(0, 0, 0, 0.6);
-	pointer-events: none;
-
-	&--left {
-		left: 0;
-		border-radius: 3px 0 0 3px;
-	}
-
-	&--right {
-		right: 0;
-		border-radius: 0 3px 3px 0;
-	}
-}
-
-.legend-thumb {
-	position: absolute;
-	top: 50%;
-	width: 6px; // = LEGEND_THUMB_R * 2
-	height: 18px;
-	background: #fff;
-	border: 2px solid #282a2c;
-	border-radius: 2px;
-	transform: translate(-50%, -50%);
-	cursor: grab;
-	box-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
-	user-select: none;
-	-webkit-user-select: none;
-	-webkit-touch-callout: none;
-
-	&:active {
-		cursor: grabbing;
-	}
-}
-
-.legend-reset-btn {
-	background: transparent;
-	border: 1px solid #555;
-	border-radius: 4px;
-	color: var(--color-text-secondary, #aaa);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
+	bottom: 6px;
+	text-align: center;
 	font-size: 12px;
-	line-height: 1;
-	padding: 4px 8px;
-	white-space: nowrap;
-	transition:
-		border-color 0.15s,
-		color 0.15s,
-		opacity 0.15s;
-
-	&:hover {
-		border-color: #aaa;
-		color: #fff;
-	}
-
-	&--disabled {
-		opacity: 0.4;
-		cursor: default;
-		pointer-events: none;
-	}
+	color: var(--color-complementary-text);
+	opacity: 0.8;
 }
 
-@media (max-width: 600px) {
-	.sankey-legend {
-		flex-wrap: wrap;
-		row-gap: 6px;
-		column-gap: 6px;
-		margin: 8px 4px;
-	}
-
-	.legend-value {
-		font-size: 3vw;
-		min-width: 28px;
-	}
-
-	.legend-reset-btn {
-		flex: 0 0 auto;
-		align-self: center;
-		margin: 0;
-	}
-}
-
-// ── Fullscreen overlay ─────────────────────────────────────────────────────
-.sankey-overlay {
-	position: fixed;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.75);
-	z-index: 1000;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.sankey-modal {
-	position: relative;
-	background: #1a1c1e;
-	border: 1px solid #444;
-	border-radius: 8px;
-	width: 75vw;
-	aspect-ratio: 4 / 3;
-	max-height: 75vh;
-	display: flex;
-	flex-direction: column;
-	padding: 6vh 16px;
-	box-sizing: border-box;
-}
-
-.modal-close-btn {
-	position: absolute;
-	top: 10px;
-	right: 12px;
-	background: transparent;
-	border: 1px solid #555;
-	border-radius: 4px;
-	color: #aaa;
-	width: 28px;
-	height: 28px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
-	font-size: 14px;
-	z-index: 1;
-	transition:
-		border-color 0.15s,
-		color 0.15s;
-
-	&:hover {
-		border-color: #aaa;
-		color: #fff;
-	}
-}
-
-.sankey-svg-full {
-	width: 100%;
-	height: auto;
-	display: block;
-}
-
-@media (max-width: 770px) {
-	.legend-label {
-		font-size: 3vw;
-	}
-
-	.sankey-modal {
-		width: 90vw;
-		height: 100%;
-		max-height: 40vh;
-	}
-}
 </style>

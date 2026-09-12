@@ -6,6 +6,8 @@ const props = defineProps([
 	"activeChart",
 	"series",
 	"map_config",
+	"map_filter",
+	"map_filter_on",
 ]);
 
 const wrapRef = ref(null);
@@ -20,13 +22,12 @@ const hoverTip = ref({
 	placeLeft: false,
 	placeAbove: true,
 });
-const hoveredNodeId = ref("");
+const hoveredNode = ref("");
 
 function normalizeRows(raw) {
 	if (Array.isArray(raw)) return raw;
 	if (!raw || typeof raw !== "object") return [];
-	const wrapped =
-		raw.data || raw.rows || raw.items || raw.series || raw.result || null;
+	const wrapped = raw.data || raw.rows || raw.items || raw.series || raw.result || null;
 	return Array.isArray(wrapped) ? wrapped : [];
 }
 
@@ -34,38 +35,12 @@ function parseLinks(raw) {
 	const rows = Array.isArray(raw?.edges) ? raw.edges : normalizeRows(raw);
 	return rows
 		.map((it) => ({
-			source: String(
-				it.source ?? it.from ?? it.x_axis ?? it.x ?? "",
-			).trim(),
+			source: String(it.source ?? it.from ?? it.x_axis ?? it.x ?? "").trim(),
 			target: String(it.target ?? it.to ?? it.y_axis ?? "").trim(),
 			value: Number(it.value ?? it.data ?? it.y ?? 0),
 			color: it.color ? String(it.color) : null,
 		}))
-		.filter(
-			(it) =>
-				it.source &&
-				it.target &&
-				Number.isFinite(it.value) &&
-				it.value > 0,
-		);
-}
-
-function addVirtualRoot(links) {
-	const targets = new Set(links.map((x) => x.target));
-	// 找沒有被其他節點指向的節點
-	const roots = [
-		...new Set(links.map((x) => x.source).filter((x) => !targets.has(x))),
-	];
-	// 已經單一 root，不需要處理
-	if (roots.length <= 1) return links;
-	const rootLinks = roots.map((root) => ({
-		source: "全部供應鏈",
-		target: root,
-		value: links
-			.filter((x) => x.source === root)
-			.reduce((sum, x) => sum + x.value, 0),
-	}));
-	return [...links, ...rootLinks];
+		.filter((it) => it.source && it.target && Number.isFinite(it.value) && it.value > 0);
 }
 
 function getPalette() {
@@ -75,7 +50,7 @@ function getPalette() {
 }
 
 function getSunburstBranchColors() {
-	const cfg = props.chart_config?.color;
+	const cfg = props.chart_config?.sunburst_branch_colors;
 	if (
 		Array.isArray(cfg) &&
 		cfg.length >= 2 &&
@@ -83,6 +58,7 @@ function getSunburstBranchColors() {
 	) {
 		return [cfg[0], cfg[1]];
 	}
+	// Default branch colors requested by design: blue + orange.
 	return ["#4EA3FF", "#F5A623"];
 }
 
@@ -165,6 +141,10 @@ function hslToRgb(h, s, l) {
 	};
 }
 
+/**
+ * 同一分支色相：第 1 環最深，愈外愈淺。
+ * 僅兩層時外圈對應「三層時第二層」的淺度（u=0.5），不會直接跳到最淺。
+ */
 function branchRingFill(input, ring, branchFillDepth) {
 	const rgb = parseAnyColorToRgb(input);
 	if (!rgb) return input;
@@ -181,7 +161,10 @@ function branchRingFill(input, ring, branchFillDepth) {
 	const lOut = 0.74;
 	const l2 = lDeep + u * (lOut - lDeep);
 	const satMul = 0.86;
-	const s2 = Math.max(0.3, Math.min(0.86, s * (1 - u * 0.1) * satMul));
+	const s2 = Math.max(
+		0.30,
+		Math.min(0.86, s * (1 - u * 0.1) * satMul),
+	);
 	const o = hslToRgb(h, s2, l2);
 	return `rgb(${o.r}, ${o.g}, ${o.b})`;
 }
@@ -243,14 +226,11 @@ function buildSunburstGraph(links) {
 function maxTreeDepthFrom(nodeName, children, depth) {
 	const kids = children.get(nodeName);
 	if (!kids || !kids.length) return depth;
-	return Math.max(
-		...kids.map((k) => maxTreeDepthFrom(k.name, children, depth + 1)),
-	);
+	return Math.max(...kids.map((k) => maxTreeDepthFrom(k.name, children, depth + 1)));
 }
 
 const sunburstData = computed(() => {
-	let links = parseLinks(props.series);
-	links = addVirtualRoot(links);
+	const links = parseLinks(props.series);
 	const W = Math.max(180, chartWidth.value);
 	const H = Math.max(140, chartHeight.value);
 	if (!links.length) return { arcs: [], labels: [], width: W, height: H };
@@ -261,9 +241,7 @@ const sunburstData = computed(() => {
 	const root = roots[0];
 	if (!root) return { arcs: [], labels: [], width: W, height: H };
 
-	const level1 = (children.get(root) || [])
-		.slice()
-		.sort((a, b) => b.value - a.value);
+	const level1 = (children.get(root) || []).slice().sort((a, b) => b.value - a.value);
 	const palette = getPalette();
 	const [branchBlue, branchOrange] = getSunburstBranchColors();
 	const branchColor = new Map();
@@ -286,20 +264,7 @@ const sunburstData = computed(() => {
 		}
 	}
 
-	// 作為品項層比例的分母
-	const ring2NodeSet = new Set();
-	for (const l1 of level1) {
-    	for (const k of children.get(l1.name) || []) {
-        	ring2NodeSet.add(k.name);
-    	}
-	}
-	const ring2total = Math.max(
-		1,
-		[...ring2NodeSet].reduce((s, name) => {
-			return s + (outsum.get(name) || 0);
-		}, 0),
-	);
-
+	const total = Math.max(1, outsum.get(root) || level1.reduce((a, b) => a + b.value, 0));
 	const cx = W / 2;
 	const cy = H / 2;
 	const pad = Number(props.chart_config?.sunburst_inset_pad);
@@ -313,28 +278,15 @@ const sunburstData = computed(() => {
 
 	const arcs = [];
 	const rawLabels = [];
-	const childrenByNode = {};
-	const parentByNode = {};
 
-	function pushLabel(a0, a1, innerR, outerR, text, ring, nodeId) {
+	function pushLabel(a0, a1, innerR, outerR, text, ring) {
 		const span = a1 - a0;
 		const avgR = (innerR + outerR) / 2;
 		const need = ring <= 1 ? 40 : ring === 2 ? 36 : 28;
 		if (span * avgR < need) return;
 		const am = (a0 + a1) / 2;
-		const p = polarToCartesian(
-			cx,
-			cy,
-			innerR + (outerR - innerR) * 0.52,
-			am,
-		);
-		rawLabels.push({
-			key: `t-${nodeId}`,
-			x: p.x,
-			y: p.y,
-			text,
-			ring,
-		});
+		const p = polarToCartesian(cx, cy, innerR + (outerR - innerR) * 0.52, am);
+		rawLabels.push({ key: `t-${text}-${ring}-${a0}`, x: p.x, y: p.y, text, ring });
 	}
 
 	function ringBaseOpacity(ring) {
@@ -343,150 +295,95 @@ const sunburstData = computed(() => {
 		return 0.96 - t * 0.06;
 	}
 
-	function recurse(
-		parentName,
-		parentId,
-		a0,
-		a1,
-		parentRing,
-		branchHex,
-		chain,
-		branchFillDepth,
-	) {
-		const kids = (children.get(parentName) || [])
-			.slice()
-			.sort((a, b) => b.value - a.value);
+	function recurse(parentName, a0, a1, parentRing, branchHex, chain, branchFillDepth) {
+		const kids = (children.get(parentName) || []).slice().sort((a, b) => b.value - a.value);
 		if (!kids.length) return;
-		const pSum = kids.reduce((s, x) => s + x.value, 0);
+		const pSum = outsum.get(parentName) || kids.reduce((s, x) => s + x.value, 0);
 		let cur = a0;
-		for (const [idx, k] of kids.entries()) {
+		for (const k of kids) {
 			const span = ((a1 - a0) * k.value) / Math.max(1e-6, pSum);
 			const aEnd = cur + span;
 			const sub = children.get(k.name) || [];
 			const childRing = parentRing + 1;
 			const fill = branchRingFill(branchHex, childRing, branchFillDepth);
 			const baseOpacity = ringBaseOpacity(childRing);
-			const nodeId = `${parentId}/${idx}:${k.name}`;
-			if (!childrenByNode[parentId]) childrenByNode[parentId] = [];
-			childrenByNode[parentId].push(nodeId);
-			parentByNode[nodeId] = parentId;
+			const pathTip = [...chain, k.name].join(" → ") + `：${k.value}%`;
 
 			if (sub.length) {
-				const nodeTotal = outsum.get(k.name) || k.value;
-				const pct = ((nodeTotal / ring2total) * 100).toFixed(1);
-				const pathTip =
-					[...chain, k.name].join(" → ") +
-					`：${nodeTotal} ${props.chart_config.unit}（佔${pct}%）`;
 				const innerR = rHole + (childRing - 1) * w;
 				const outerR = rHole + childRing * w;
 				arcs.push({
-					key: `n-${nodeId}`,
+					key: `n-${k.name}-${childRing}-${cur}`,
 					d: arcPath(cx, cy, innerR, outerR, cur, aEnd),
 					fill,
 					ring: childRing,
 					baseOpacity,
 					node: k.name,
-					nodeId,
 					parent: parentName,
-					title: `${k.name}：${nodeTotal} ${props.chart_config.unit}`,
+					title: `${k.name}：${k.value}%`,
 					tooltip: pathTip,
 				});
-				pushLabel(cur, aEnd, innerR, outerR, k.name, childRing, nodeId);
-				recurse(
-					k.name,
-					nodeId,
-					cur,
-					aEnd,
-					childRing,
-					branchHex,
-					[...chain, k.name],
-					branchFillDepth,
-				);
+				pushLabel(cur, aEnd, innerR, outerR, k.name, childRing);
+				recurse(k.name, cur, aEnd, childRing, branchHex, [...chain, k.name], branchFillDepth);
 			} else {
-				const nodeTotal = outsum.get(k.name) || k.value;
-				const pct = ((nodeTotal / ring2total) * 100).toFixed(1);
-				const pathTip =
-					[...chain, k.name].join(" → ") +
-					`：${k.value} ${props.chart_config.unit}（佔${pct}%）`;
 				const innerR = rHole + (childRing - 1) * w;
 				const polar = w * (0.12 + 1.18 * (k.value / maxLeafVal));
 				const outerR = baseOuter + polar;
 				arcs.push({
-					key: `leaf-${nodeId}`,
+					key: `leaf-${k.name}-${childRing}-${cur}`,
 					d: arcPath(cx, cy, innerR, outerR, cur, aEnd),
 					fill,
 					ring: childRing,
 					baseOpacity,
 					node: k.name,
-					nodeId,
 					parent: parentName,
-					title: `${k.name}：${k.value} ${props.chart_config.unit}`,
+					title: `${k.name}：${k.value}%`,
 					tooltip: pathTip,
 				});
-				pushLabel(cur, aEnd, innerR, outerR, k.name, childRing, nodeId);
+				pushLabel(cur, aEnd, innerR, outerR, k.name, childRing);
 			}
 			cur = aEnd;
 		}
 	}
 
 	let a0 = -Math.PI / 2;
-
-	const ring1Total = Math.max(
-		1,
-		level1.reduce((sum, item) => {
-			return sum + (outsum.get(item.name) || item.value);
-		}, 0),
-	);
-
-	for (const [idx, l1] of level1.entries()) {
-		const nodeTotal = outsum.get(l1.name) || l1.value;
-		// 第一環佔整圈比例，用 l1.value（這段弧的實際流量）/ total
-		const pct = ((nodeTotal / ring1Total) * 100).toFixed(1);
-		const span1 = (Math.PI * 2 * nodeTotal) / ring1Total;
+	for (const l1 of level1) {
+		const span1 = (Math.PI * 2 * l1.value) / total;
 		const a1 = a0 + span1;
 		const c1 = branchColor.get(l1.name) || "#7C4DFF";
 		const sub = children.get(l1.name) || [];
-		const nodeId = `${root}/${idx}:${l1.name}`;
-		if (!childrenByNode[root]) childrenByNode[root] = [];
-		childrenByNode[root].push(nodeId);
-		parentByNode[nodeId] = root;
-		const branchFillDepth = Math.max(
-			1,
-			maxTreeDepthFrom(l1.name, children, 1),
-		);
+		const branchFillDepth = Math.max(1, maxTreeDepthFrom(l1.name, children, 1));
 		if (sub.length) {
 			const innerR = rHole;
 			const outerR = rHole + w;
 			arcs.push({
-				key: `l1-${nodeId}`,
+				key: `l1-${l1.name}`,
 				d: arcPath(cx, cy, innerR, outerR, a0, a1),
 				fill: branchRingFill(c1, 1, branchFillDepth),
 				ring: 1,
 				baseOpacity: ringBaseOpacity(1),
 				node: l1.name,
-				nodeId,
 				parent: root,
-				title: `${l1.name}：${nodeTotal} ${props.chart_config.unit}`,
-				tooltip: `${l1.name}：${nodeTotal} ${props.chart_config.unit}（佔${pct}%）`,
+				title: `${l1.name}：${l1.value}%`,
+				tooltip: `${l1.name}：${l1.value}%`,
 			});
-			pushLabel(a0, a1, innerR, outerR, l1.name, 1, nodeId);
-			recurse(l1.name, nodeId, a0, a1, 1, c1, [l1.name], branchFillDepth);
+			pushLabel(a0, a1, innerR, outerR, l1.name, 1);
+			recurse(l1.name, a0, a1, 1, c1, [l1.name], branchFillDepth);
 		} else {
 			const polar = w * (0.12 + 1.18 * (l1.value / maxLeafVal));
 			const outerR = baseOuter + polar;
 			arcs.push({
-				key: `l1leaf-${nodeId}`,
+				key: `l1leaf-${l1.name}`,
 				d: arcPath(cx, cy, rHole, outerR, a0, a1),
 				fill: branchRingFill(c1, 1, branchFillDepth),
 				ring: 1,
 				baseOpacity: ringBaseOpacity(1),
 				node: l1.name,
-				nodeId,
 				parent: root,
-				title: `${l1.name}：${l1.value} ${props.chart_config.unit}`,
-				tooltip: `${l1.name}：${l1.value} ${props.chart_config.unit}（佔${pct}%）`,
+				title: `${l1.name}：${l1.value}%`,
+				tooltip: `${l1.name}：${l1.value}%`,
 			});
-			pushLabel(a0, a1, rHole, outerR, l1.name, 1, nodeId);
+			pushLabel(a0, a1, rHole, outerR, l1.name, 1);
 		}
 		a0 = a1;
 	}
@@ -512,6 +409,13 @@ const sunburstData = computed(() => {
 			);
 		});
 		if (!overlapped) labels.push({ ...it, _box: box });
+	}
+
+	const childrenByNode = {};
+	const parentByNode = {};
+	for (const [k, arr] of children.entries()) {
+		childrenByNode[k] = arr.map((x) => x.name);
+		for (const x of arr) parentByNode[x.name] = k;
 	}
 
 	return { arcs, labels, width: W, height: H, childrenByNode, parentByNode };
@@ -545,34 +449,32 @@ function onArcHoverMove(evt, arc) {
 	let placeLeft = false;
 	if (!roomRight && roomLeft) placeLeft = true;
 	else if (roomRight && roomLeft) placeLeft = evt.clientX > vw * 0.5;
-	else if (!roomRight && !roomLeft)
-		placeLeft = evt.clientX + estW / 2 > vw * 0.5;
+	else if (!roomRight && !roomLeft) placeLeft = evt.clientX + estW / 2 > vw * 0.5;
 
 	hoverTip.value = {
 		show: true,
-		left: placeLeft ? null : evt.clientX + g,
-		right: placeLeft ? vw - evt.clientX + g : null,
-		top: placeAbove ? null : evt.clientY + g,
-		bottom: placeAbove ? vh - evt.clientY + g : null,
+		x: evt.clientX,
+		y: evt.clientY,
 		text,
 		placeLeft,
 		placeAbove,
 	};
-	hoveredNodeId.value = arc.nodeId || "";
+	hoveredNode.value = arc.node || "";
 }
 
 function onArcHoverLeave() {
 	hoverTip.value.show = false;
-	hoveredNodeId.value = "";
+	hoveredNode.value = "";
 }
 
 function highlightSet() {
-	const root = hoveredNodeId.value;
+	const root = hoveredNode.value;
 	if (!root) return null;
 	const set = new Set([root]);
 	const childrenByNode = sunburstData.value.childrenByNode || {};
 	const parentByNode = sunburstData.value.parentByNode || {};
 
+	// Descendants: hover parent => all next layers glow together.
 	const q = [root];
 	while (q.length) {
 		const n = q.shift();
@@ -585,6 +487,7 @@ function highlightSet() {
 		}
 	}
 
+	// Ancestors: keep path readable.
 	let p = parentByNode[root];
 	while (p) {
 		set.add(p);
@@ -596,16 +499,14 @@ function highlightSet() {
 function arcFill(arc) {
 	const hs = highlightSet();
 	if (!hs) return arc.fill;
-	return hs.has(arc.nodeId) ? lighten(arc.fill, 0.1) : darken(arc.fill, 0.16);
+	return hs.has(arc.node) ? lighten(arc.fill, 0.1) : darken(arc.fill, 0.16);
 }
 
 function arcOpacity(arc) {
 	const hs = highlightSet();
 	const base = arc.baseOpacity ?? 0.9;
 	if (!hs) return base;
-	return hs.has(arc.nodeId)
-		? Math.min(0.99, base + 0.06)
-		: Math.max(0.26, base * 0.52);
+	return hs.has(arc.node) ? Math.min(0.99, base + 0.06) : Math.max(0.26, base * 0.52);
 }
 
 onMounted(() => {
@@ -620,61 +521,53 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
-    v-if="activeChart === 'SunburstChart'"
-    ref="wrapRef"
-    class="sunburstchart"
-  >
-    <div class="sunburstchart__svg-clip">
-      <svg
-        :viewBox="`0 0 ${sunburstData.width} ${sunburstData.height}`"
-        width="100%"
-        height="100%"
-      >
-        <g>
-          <path
-            v-for="a in sunburstData.arcs"
-            :key="a.key"
-            :d="a.d"
-            class="sunburstchart__arc"
-            :fill="arcFill(a)"
-            :fill-opacity="arcOpacity(a)"
-            role="img"
-            :aria-label="a.title"
-            @mouseenter="(evt) => onArcHoverMove(evt, a)"
-            @mousemove="(evt) => onArcHoverMove(evt, a)"
-            @mouseleave="onArcHoverLeave"
-          />
-        </g>
-        <g>
-          <text
-            v-for="t in sunburstData.labels"
-            :key="t.key"
-            :x="t.x"
-            :y="t.y"
-            class="sunburstchart__label"
-            text-anchor="middle"
-            dominant-baseline="middle"
-          >
-            {{ t.text }}
-          </text>
-        </g>
-      </svg>
-    </div>
-    <div
-      v-if="hoverTip.show"
-      class="sunburstchart__hover"
-      :style="{
-        left: hoverTip.left !== null ? `${hoverTip.left}px` : 'auto',
-        right: hoverTip.right !== null ? `${hoverTip.right}px` : 'auto',
-        top: hoverTip.top !== null ? `${hoverTip.top}px` : 'auto',
-        bottom:
-          hoverTip.bottom !== null ? `${hoverTip.bottom}px` : 'auto',
-      }"
-    >
-      {{ hoverTip.text }}
-    </div>
-  </div>
+	<div v-if="activeChart === 'SunburstChart'" ref="wrapRef" class="sunburstchart">
+		<div class="sunburstchart__svg-clip">
+			<svg :viewBox="`0 0 ${sunburstData.width} ${sunburstData.height}`" width="100%" height="100%">
+			<g>
+				<path
+					v-for="a in sunburstData.arcs"
+					:key="a.key"
+					:d="a.d"
+					class="sunburstchart__arc"
+					:fill="arcFill(a)"
+					:fill-opacity="arcOpacity(a)"
+					role="img"
+					:aria-label="a.title"
+					@mouseenter="(evt) => onArcHoverMove(evt, a)"
+					@mousemove="(evt) => onArcHoverMove(evt, a)"
+					@mouseleave="onArcHoverLeave"
+				/>
+			</g>
+			<g>
+				<text
+					v-for="t in sunburstData.labels"
+					:key="t.key"
+					:x="t.x"
+					:y="t.y"
+					class="sunburstchart__label"
+					text-anchor="middle"
+					dominant-baseline="middle"
+				>
+					{{ t.text }}
+				</text>
+			</g>
+		</svg>
+		</div>
+		<div
+			v-if="hoverTip.show"
+			class="sunburstchart__hover"
+			:class="{
+				'sunburstchart__hover--tl': hoverTip.placeLeft && hoverTip.placeAbove,
+				'sunburstchart__hover--tr': !hoverTip.placeLeft && hoverTip.placeAbove,
+				'sunburstchart__hover--bl': hoverTip.placeLeft && !hoverTip.placeAbove,
+				'sunburstchart__hover--br': !hoverTip.placeLeft && !hoverTip.placeAbove,
+			}"
+			:style="{ left: `${hoverTip.x}px`, top: `${hoverTip.y}px` }"
+		>
+			{{ hoverTip.text }}
+		</div>
+	</div>
 </template>
 
 <style scoped lang="scss">
@@ -685,6 +578,7 @@ onBeforeUnmount(() => {
 	overflow: visible;
 }
 
+/* 只裁切圖形；hover 用 fixed 畫在視窗上，不受父層 overflow 遮住 */
 .sunburstchart__svg-clip {
 	width: 100%;
 	height: 100%;
@@ -692,6 +586,8 @@ onBeforeUnmount(() => {
 }
 
 .sunburstchart__label {
+	font-family: "微軟正黑體", "Microsoft JhengHei", "Droid Sans", "Open Sans",
+		"Helvetica", sans-serif;
 	font-size: 14px;
 	font-weight: 700;
 	fill: #e6edf5;
@@ -704,16 +600,19 @@ onBeforeUnmount(() => {
 .sunburstchart__arc {
 	stroke: rgba(120, 120, 120, 0.65);
 	stroke-width: 1;
-	transition:
-		fill 180ms ease,
-		fill-opacity 180ms ease;
+	transition: fill 180ms ease, fill-opacity 180ms ease;
 }
 
 .sunburstchart__hover {
+	--tip-gap: 4px;
 	position: fixed;
 	margin: 0;
-	background: #282a2c;
+	background: rgba(8, 11, 18, 0.92);
 	color: #fff;
+	font-family: "微軟正黑體", "Microsoft JhengHei", "Droid Sans", "Open Sans",
+		"Helvetica", sans-serif;
+	font-size: 14px;
+	font-weight: 700;
 	padding: 8px 12px;
 	border-radius: 6px;
 	border: 1px solid rgba(255, 255, 255, 0.2);
@@ -724,5 +623,18 @@ onBeforeUnmount(() => {
 	max-width: min(400px, calc(100vw - 20px));
 	z-index: 10050;
 	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+	/* 錨在游標 (left/top)；translate 讓框緣距游標固定為 --tip-gap，左右象限對稱 */
+	&--tr {
+		transform: translate(var(--tip-gap), calc(-100% - var(--tip-gap)));
+	}
+	&--tl {
+		transform: translate(calc(-100% - var(--tip-gap)), calc(-100% - var(--tip-gap)));
+	}
+	&--br {
+		transform: translate(var(--tip-gap), var(--tip-gap));
+	}
+	&--bl {
+		transform: translate(calc(-100% - var(--tip-gap)), var(--tip-gap));
+	}
 }
 </style>
