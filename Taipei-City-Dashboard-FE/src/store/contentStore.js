@@ -427,6 +427,13 @@ export const useContentStore = defineStore("content", {
                 		return;
             		}
 					const component = this.cityDashboard.components[index];
+					// 即時生成的組件沒有對應的後端 id，這裡打 /component/{id}/chart
+					// 會 404，然後被下面的 catch 清成 chart_data = []，
+					// 畫面上就變成「總合 0」的全暗地圖。資料本來就在 chart_data 裡，
+					// 不需要也不能重新抓。
+					if (component.generated) {
+						continue;
+					}
 					if (
 						this.metroKeys.some((key) =>
 							component.index.includes(key),
@@ -484,6 +491,13 @@ export const useContentStore = defineStore("content", {
                 		return;
             		}
 					const component = this.cityDashboard.components[index];
+					// 即時生成的組件沒有對應的後端 id，這裡打 /component/{id}/chart
+					// 會 404，然後被下面的 catch 清成 chart_data = []，
+					// 畫面上就變成「總合 0」的全暗地圖。資料本來就在 chart_data 裡，
+					// 不需要也不能重新抓。
+					if (component.generated) {
+						continue;
+					}
 					if (
 						this.metroKeys.some((key) =>
 							component.index.includes(key),

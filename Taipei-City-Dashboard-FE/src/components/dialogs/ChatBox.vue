@@ -252,6 +252,9 @@ function mountGenerated(r) {
 	const id = 90001 + genSeq++;
 	city.components.unshift({
 		id,
+		// 標記給 contentStore 的定期更新看：這個組件的資料已經在 chart_data 裡，
+		// 不要拿 id 去後端重抓（抓不到，會被清空成全暗的 0）。
+		generated: true,
 		index: s.index,
 		name: s.name,
 		city: s.city,
