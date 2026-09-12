@@ -157,6 +157,30 @@ export function validateSpec(spec, catalog) {
 		if (spec.transform?.divide && types.includes("ratio")) {
 			push("ratio 型別（百分比、指數）不可套用 transform.divide");
 		}
+
+		// 聚合方式必須符合 catalog.yaml 的 agg_rules。
+		//
+		// 這條規則一直寫在 catalog.yaml 裡，但從來沒有程式在用它。
+		// 長表（youth_fact）一定要聚合才畫得出圖，所以現在它必須生效——
+		// 「把失業率加總」在數學上沒有意義，但 SQL 不會報錯，
+		// 畫出來是一個看起來正常、實際上毫無意義的數字。
+		const agg = spec.aggregate;
+		if (agg !== undefined) {
+			if (!AGGREGATES.includes(agg)) {
+				push(`aggregate 必須是 ${AGGREGATES.join(" / ")} 之一，收到 ${agg}`);
+			} else {
+				for (const sr of spec.series) {
+					const ty = typeOf(sr.column);
+					const allowed = catalog.aggRules?.[ty];
+					if (allowed && !allowed.includes(agg)) {
+						push(`${sr.column} 是 ${ty} 型別，不可用 ${agg}`
+							+ `（允許：${allowed.join(" / ")}）。`
+							+ (ty === "ratio" && agg === "sum"
+								? "比率與指數加總沒有數學意義。" : ""));
+					}
+				}
+			}
+		}
 	}
 
 	(spec.filters || []).forEach((f, i) => {
@@ -197,15 +221,32 @@ function whereClause(spec, extra = []) {
 	return parts.length ? "WHERE " + parts.join("\n      AND ") : "";
 }
 
-/** 數值運算：只支援除法與指定小數位，夠用且不給模型自由發揮的空間 */
+/** 允許的聚合函式。與 catalog.yaml 的 agg_rules 用同一組名稱。 */
+const AGGREGATES = ["sum", "avg", "min", "max"];
+
+/**
+ * 數值運算：除法、小數位、以及（長表才需要的）聚合。
+ *
+ * 為什麼會有聚合這件事：
+ *   原本只處理寬表——一列就是一個行政區，欄位本身就是度量，
+ *   所以 SELECT 欄位直接出來即可。
+ *   但 youth_fact 那種統一事實表是長表：一個行政區有很多列
+ *   （不同 indicator、不同年齡組距、不同性別），必須 SUM 起來。
+ *
+ * 不給模型自由發揮：只有 AGGREGATES 這四個，而且 validateSpec 會依
+ * catalog 的 agg_rules 擋掉「對 ratio 做 sum」這種數學上沒有意義的組合。
+ */
 function metricExpr(spec, column) {
 	const col = quoteIdent(column);
+	const agg = spec.aggregate;
+	const base = agg ? `${agg}(${col})` : col;
+
 	const d = spec.transform?.divide;
-	if (d) return `round(${col} / ${Number(d)}.0)`;
+	if (d) return `round(${base} / ${Number(d)}.0)`;
 	// ratio 欄位是 real，直接加總會出現 7238.157860000002 這種浮點尾巴。
 	// 指數到小數點後一位已經遠超過解讀需要。
 	const r = spec.transform?.round;
-	return Number.isInteger(r) ? `round(${col}::numeric, ${r})` : col;
+	return Number.isInteger(r) ? `round((${base})::numeric, ${r})` : base;
 }
 
 /**
@@ -226,6 +267,10 @@ export function compileSpec(spec, xOrder) {
 	// 一律轉 varchar：官方 two_d／three_d 的 x_axis 契約本來就是字串。
 	const asText = (e) => `${e}::varchar`;
 
+	// 有聚合就要分組。分組鍵是 x 欄位本身（不是轉型後的），
+	// PostgreSQL 才認得出 SELECT 清單裡那個 x::varchar 是它的衍生值。
+	const groupBy = spec.aggregate ? `GROUP BY ${x}` : "";
+
 	// two_d 只有一個數列，欄位是 x_axis + data，沒有 y_axis。
 	//
 	// 為什麼要分開處理：官方 DistrictChart 依「數列數量」切換格式解讀
@@ -238,6 +283,7 @@ export function compileSpec(spec, xOrder) {
 			`SELECT ${asText(x)} AS x_axis, ${metricExpr(spec, s0.column)} AS data`,
 			`FROM ${t}`,
 			whereFor(s0),
+			groupBy,
 			"-- 順序固定，避免每次查詢的排列不同",
 			`ORDER BY ARRAY_POSITION(${arr(xOrder)}, ${asText(x)})`,
 		].filter(Boolean).join("\n");
@@ -249,7 +295,7 @@ export function compileSpec(spec, xOrder) {
 		const dAlias = i === 0 ? ` AS data` : "";
 		const w = whereFor(s);
 		return `    SELECT ${asText(x)}${alias}, ${lit(s.label)}${yAlias}, ${metricExpr(spec, s.column)}${dAlias}\n` +
-		       `    FROM ${t}\n` + (w ? `    ${w}\n` : "");
+		       `    FROM ${t}\n` + (w ? `    ${w}\n` : "") + (groupBy ? `    ${groupBy}\n` : "");
 	});
 
 	const yOrder = spec.series.map((s) => s.label);

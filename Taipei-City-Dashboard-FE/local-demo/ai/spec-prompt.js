@@ -20,6 +20,7 @@ const SCHEMA = `{
                  "filter": { "column": "欄位", "eq": "值" } } ],   // filter 選填，見規則 12
   "filters": [ { "column": "欄位", "eq": "值" } ],
   "latest_by": "只取最新一期時填年份欄位，否則省略",
+  "aggregate": "長表才需要：sum / avg / min / max，見規則 14",
   "transform": { "divide": 1000 },
   "chart":   { "types": ["DistrictChart", "ColumnChart"], "unit": "仟人" },
   "short_desc": "一句話說明",
@@ -61,6 +62,29 @@ const RULES = `規則：
 13. 數列的 label 必須與它實際取到的資料相符。
    標籤寫「女性」卻沒有對應的 filter，會被擋下——那種圖畫得出來、數字也像真的，
    但回答的是另一個問題，使用者沒有線索能發現。
+
+14. 資料表分兩種，看目錄的「粒度」就知道要不要聚合：
+
+   **寬表**（一列 = 一個行政區，欄位本身就是度量）
+   直接挑欄位，不要填 aggregate。
+
+   **長表**（一列 = 一個行政區 × 一個指標 × 一個年齡組距 × 一種性別）
+   同一個行政區有很多列，必須填 aggregate，否則同一區會畫出很多個點。
+   這時 series[].column 固定是數值欄位（例如 value），
+   要看哪個指標是用 series[].filter 指定，不是換欄位。
+
+   長表的例子：
+
+     "aggregate": "sum",
+     "series": [
+       {"label": "青年失業人數", "column": "value",
+        "filter": {"column": "indicator_id", "eq": "unemployed_count"}}
+     ]
+
+15. 聚合方式必須符合欄位型別：
+   count（人數、件數）可以 sum / avg / min / max。
+   ratio（比率、指數、百分比）**不可以 sum**——比率加總沒有數學意義。
+   只能 avg / min / max。
 
 只輸出 JSON，不要有其他文字，不要包在程式碼區塊裡。`;
 
