@@ -32,11 +32,33 @@ export async function generateComponent(rawSpec, { db } = {}) {
 	const v = validateSpec(spec, catalog);
 	if (!v.ok) return { ok: false, stage: "validate", errors: v.errors };
 
-	// ratio 欄位（百分比、指數）在資料庫是 real，加總會拖出浮點尾巴。
-	// 模型不必操心這種事，我們依 catalog 的型別自動補上小數位。
+	// 數值在資料庫是 real，聚合會拖出浮點尾巴（實測 1198.151712435919）。
+	// 模型不必操心這種事，我們依型別自動補上小數位。
+	//
+	// 寬表看欄位型別就夠了。長表不行——欄位永遠是 value，型別永遠是 count，
+	// 真正的型別在「該指標的 value_type」裡（rate / index / mean / median）。
+	// 少了這一段，跨領域的圖 y 軸會顯示 28000.0000000000000。
 	const meta = catalog.tables?.[spec.table]?.fields || {};
-	const allRatio = spec.series.every((x) => meta[x.column]?.type === "ratio");
-	if (allRatio && !spec.transform?.divide && !Number.isInteger(spec.transform?.round)) {
+
+	/** 這個數列實際是哪一種量：長表查指標，寬表查欄位。 */
+	const seriesValueType = (sr) => {
+		const ind = sr.filter?.column === "indicator_id" ? sr.filter.eq : null;
+		if (ind && catalog.youthDatasets) {
+			for (const d of Object.values(catalog.youthDatasets)) {
+				const vt = d.indicators?.[ind]?.value_type;
+				if (vt) return vt;
+			}
+		}
+		return meta[sr.column]?.type;
+	};
+
+	// count／sum 是整數個體，取平均才會有小數；其餘本來就是連續量。
+	const NON_INTEGER = new Set(["ratio", "rate", "index", "mean", "median"]);
+	const types = spec.series.map(seriesValueType);
+	const needRound =
+		types.every((t) => NON_INTEGER.has(t)) ||          // 本來就是連續量
+		(spec.aggregate === "avg" || spec.aggregate === "sum" && types.some((t) => NON_INTEGER.has(t)));
+	if (needRound && !spec.transform?.divide && !Number.isInteger(spec.transform?.round)) {
 		spec.transform = { ...(spec.transform || {}), round: 1 };
 	}
 
