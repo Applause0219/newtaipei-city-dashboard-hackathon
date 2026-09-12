@@ -138,12 +138,17 @@ function createApiMiddleware() {
 						console.log("[agent] " + question);
 						try {
 							const { runAgent } = await import("./ai/agent.js");
+							// history 是前幾輪的問答。沒有它，使用者回「好」的時候
+							// 模型只會收到一個「好」，接不上前一則自己提的問題。
+							const history = Array.isArray(body.history) ? body.history : [];
 							const r = await runAgent(question, {
+								history,
 								onEvent: (e) => {
 									if (e.type === "tool") console.log(`[agent]   → ${e.name}  ${e.summary}`);
 								},
 							});
-							console.log(`[agent] → ${r.trace.length} 次工具、${r.components.length} 個組件、${(r.ms / 1000).toFixed(1)}s`);
+							console.log(`[agent] → ${r.trace.length} 次工具、${r.components.length} 個組件、${(r.ms / 1000).toFixed(1)}s`
+								+ (history.length ? `（帶 ${history.length} 則脈絡）` : ""));
 							return send({ data: r, status: "success" }, "agent");
 						} catch (err) {
 							console.log("[agent] ✗ " + err.message);

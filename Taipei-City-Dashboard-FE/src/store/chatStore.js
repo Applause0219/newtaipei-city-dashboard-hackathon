@@ -10,11 +10,9 @@ export const useChatStore = defineStore('chat', () => {
       		role: 'bot',
 	  		isDefault: true,
       		content:
-				"您好，我是【臺北城市儀表板】小幫手，很高興為您服務！\n 您可以： \n\n • 點擊左側既有的儀表板主題，快速查看各主題內容 \n • 輸入您感興趣的主題描述，我會推薦相關組件，並協助組建最適合的儀表板 \n • 點擊推薦組件清單中的主題按鈕，即可前往查看該主題儀表板  \n\n 如果有想了解的內容，歡迎直接告訴我，我會盡力協助！\n\n 📩 聯絡信箱：tuic@gov.taipei \n 🏢 臺北大數據中心 \n\n",
+				"您好，我是【新北青年儀表板】的分析助理。\n\n 直接用一句話問我，我會自己決定要查哪些資料、查幾次，\n 然後把查詢過程一步一步攤開給您看，最後附上圖表。\n\n 可以問：\n • 單一主題 —— 各區的租金中位數、各區 18 到 35 歲的人口\n • 跨領域比較 —— 青年多的區租金是不是也比較高\n • 時間變化 —— 過去五年青年人口流失最多的是哪幾區\n\n 查不到的資料我會直說，不會硬掰。下面有幾個範例問題可以直接點。\n\n 📩 聯絡信箱：tuic@gov.taipei \n 🏢 臺北大數據中心 \n\n",
 		},
   	];
-
-	const recommendComponents = ref(null)
 
 	// 儲存組件對應主題
 	const compToDashIndexMap = ref({});
@@ -80,113 +78,17 @@ export const useChatStore = defineStore('chat', () => {
     	chatData.value.push({ id: chatData.value.length + 1, isDefault: false, ...newChatData });
   	};
 
+  	// 只負責把使用者的問題推進對話。
+  	//
+  	// 原本這裡會先打一次向量檢索推薦既有組件，再讓使用者從三顆按鈕裡挑一條路。
+  	// 拿掉的原因不是它不準，是它**永遠會回東西**——實測問
+  	// 「香蕉的價格波動與月球引力的關聯」也回 10 個組件，分數 0.843~0.848，
+  	// 全部高於 0.8 門檻。一個永遠說「有」的推薦，使用者無從判斷何時該信。
+  	//
+  	// 現在只有一條路：問題直接交給 agent，由它決定要查什麼、查幾次。
+  	// 該用哪條管線是系統的責任，不該變成使用者要做的選擇題。
   	const addQueryData = async (newChatData) => {
-
     	chatData.value.push({ id: chatData.value.length + 1, isDefault: false, ...newChatData });
-
-		recommendComponents.value = [];
-		let topK = null;
-
-		try {
-			const response = await http.post(
-  				"/vector/component",
-  				new URLSearchParams({
-    				query: newChatData.content,
-    				limit: 10,
-    				score: 0.8,
-  				}),
-  				{
-    				headers: {
-      					"Content-Type": "application/x-www-form-urlencoded",
-    				},
-  				}
-			);
-
-			const dashboards = await http.get(`/dashboard/`);
-
-			const compList = response.data.data;
-			const dashMap = dashboards.data.data;
-
-			compList.forEach((comp) => {
-				const matched = [];
-
-				Object.entries(dashMap).forEach(([city,cityDashboards]) => {
-					cityDashboards.forEach((dash) => {
-						if (dash.components.includes(comp.id)) {
-							// 避免同名主題重複加入
-							if (!matched.some((m) => m.index === dash.index && m.city === city)) {
-								matched.push({
-									name: dash.name,
-									index: dash.index,
-									city: city
-								});
-							}
-						}
-					});
-				});
-
-				compToDashIndexMap.value[comp.id] = matched;
-			});
-
-			if (response.data?.data?.length > 0) {
-				recommendComponents.value = response.data.data;
-			}
-
-			// 去除重複項目存到 result
-			const result = Array.from(
-  				recommendComponents.value.reduce((map, item) => {
-    				const key = item.index
-    				const exist = map.get(key)
-
-    				// 如果還沒放過，直接放
-    				if (!exist) {
-      					map.set(key, item)
-      					return map
-    				}
-
-    				// 如果已存在，但現在的是 metrotaipei，就覆蓋
-    				if (item.city === 'metrotaipei') {
-      					map.set(key, item)
-    				}
-
-    				return map
-  				}, new Map()).values()
-			)
-			// 把 result 蓋回去 recommendComponents
-			recommendComponents.value = result
-
-		} catch (error) { 
-			console.error("VectorAnalysisError :", error);
-		}
-
-		if (recommendComponents.value && recommendComponents.value?.length > 0) {
-			topK = [...recommendComponents.value].sort((a, b) => b.score - a.score);
-			chatData.value.push({ id: chatData.value.length + 1, role: 'bot', isDefault: false, button: [{ id:1, text:'建立儀表板' }], content: `您好 😊 \n 以下是根據您的問題，自動為您推薦的「組件清單」。您可以將這些組件整批加入「個人儀表板」，方便日後快速查看與使用。\n`, relations: topK });
-			chatData.value.push({ id: chatData.value.length + 1, role: 'bot', isDefault: false, content: `若您有任何新的查詢或想深入探索的內容，都可以隨時在對話框告訴我～\n 我很樂意再協助您 💬✨` });
-
-			// 向量檢索「一定會」回傳結果，即使問題與資料完全無關——
-			// 實測：問「香蕉的價格波動與月球引力的關聯」仍回傳 10 個組件，
-			// 分數 0.843~0.848，全部高於 0.8 門檻。所以推薦清單不代表真的合適。
-			// 因此不論有沒有推薦，都一併提供「照您的問題現做一個」的選項。
-			chatData.value.push({
-				id: chatData.value.length + 1, role: 'bot', isDefault: false,
-				content: `如果上面的組件都不是您要的，我可以直接照您的問題做一個新組件；\n或是讓我查過資料再回答（會慢一點，但能處理比較複雜的問題）👇`,
-				button: [{ id: 1, text: '幫我建立組件' }, { id: 2, text: '深入分析' }],
-				question: newChatData.content,
-			});
-		} else {
-			// 原本這裡是死路：找不到相似組件就只能請使用者重問。
-			// 現在改成提議即時生成一個——資料目錄裡有的東西，就做得出來。
-			chatData.value.push({
-				id: chatData.value.length + 1, role: 'bot', isDefault: false,
-				content: `現有的組件裡沒有夠接近的 🤔\n\n不過如果這個問題在資料目錄涵蓋的範圍內，我可以幫您做一個新組件；\n或是讓我實際查過資料再回答 👇`,
-				button: [{ id: 1, text: '幫我建立組件' }, { id: 2, text: '深入分析' }],
-				question: newChatData.content,
-			});
-		}
-
-		// 分析結束後紀錄問答log
-		saveChatLog(newChatData.content, recommendComponents.value);
   	};
 
 	const saveChatLog = async(question, answer) => {

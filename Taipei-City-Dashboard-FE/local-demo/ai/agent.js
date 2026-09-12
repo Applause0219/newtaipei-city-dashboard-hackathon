@@ -64,8 +64,13 @@ function systemPrompt(catalog) {
 		"## 建議的做法",
 		"",
 		"- 先 search_indicators 找資料，再 inspect_indicator 確認地理層級與性別值",
-		"- 回答裡只要出現一組可以互相比較的數字，就順手 build_component 把它畫出來。",
+		"- 回答裡只要出現一組可以互相比較的數字，就**直接** build_component 畫出來。",
 		"  使用者要能在畫面上看到跟文字同一組數字，不然他無從核對。",
+		"- **不要問「要不要做成圖表」「要不要看實際數字」再等使用者回答**。",
+		"  該畫就畫、該查就查，在這一輪做完。多問一輪等於讓使用者多等半分鐘，",
+		"  而他要的東西你本來就查得到。",
+		"- 使用者接的是上一輪的對話，「好」「可以」「那呢」都是承接前文。",
+		"  看不懂在指什麼的時候，回頭看前面幾則訊息，不要當成新問題重新自我介紹。",
 		"- 要畫分區圖就必須確認該指標有 district 層級；只有 country 的畫不出來",
 		"- build_component 失敗時，錯誤訊息會告訴你哪裡不對，修正後再試（最多試三次）",
 		"- 使用者要的東西真的沒有時，先查出替代方案再提，不要只說「沒有」",
@@ -119,15 +124,49 @@ function systemPrompt(catalog) {
 	].join("\n");
 }
 
+/** 帶進脈絡的歷史輪數上限，以及每則訊息的字數上限。
+ *  答案裡常有整張 markdown 表格，不截斷的話幾輪就把 context 塞滿。 */
+const HISTORY_TURNS = 6;
+const HISTORY_CHARS = 1800;
+
+/**
+ * 把前端傳來的對話紀錄整理成模型收得下的 transcript。
+ *
+ * Bedrock 的 Converse API 要求：對話必須從 user 開始、角色交替。
+ * 歷史被截斷時開頭可能剛好是 assistant，同一邊也可能連續出現兩則
+ * （例如一次回答拆成正文加補充），所以這裡要自己修平。
+ */
+export function buildTranscript(history) {
+	const msgs = [];
+	for (const h of (history || []).slice(-HISTORY_TURNS * 2)) {
+		const role = h?.role === "assistant" || h?.role === "bot" ? "assistant" : "user";
+		const text = String(h?.content ?? "").trim().slice(0, HISTORY_CHARS);
+		if (!text) continue;
+		// 同一邊連續出現就合併，不要送出兩則同角色訊息
+		const last = msgs[msgs.length - 1];
+		if (last && last.role === role) {
+			last.content[0].text += "\n\n" + text;
+			continue;
+		}
+		msgs.push({ role, content: [{ type: "text", text }] });
+	}
+	// 必須以 user 開頭
+	while (msgs.length && msgs[0].role !== "user") msgs.shift();
+	// 必須以 assistant 結尾——後面才接得上這次的新問題
+	while (msgs.length && msgs[msgs.length - 1].role !== "assistant") msgs.pop();
+	return msgs;
+}
+
 /**
  * 跑一次 agent。
  *
  * @param {string} question
  * @param {object} opts
  * @param {function} opts.onEvent  每個事件通知一次（工具呼叫、完成…）
+ * @param {Array}   opts.history   先前的問答，{role:'user'|'assistant', content}
  * @returns {Promise<{text, trace, components, ms, model}>}
  */
-export async function runAgent(question, { onEvent = () => {}, db } = {}) {
+export async function runAgent(question, { onEvent = () => {}, db, history = [] } = {}) {
 	const t0 = Date.now();
 	const catalog = await loadCatalog(db);
 
@@ -150,9 +189,14 @@ export async function runAgent(question, { onEvent = () => {}, db } = {}) {
 	const { runAgentLoop } = await import("@earendil-works/pi-agent-core");
 	const { bedrockProviderModule } = await import("@earendil-works/pi-ai/bedrock-provider");
 
+	// messages 原本寫死成 []，於是每一次呼叫都是全新的對話。
+	// 症狀：模型問「要不要做成圖表？」，使用者回「好」，
+	// 模型收到的就只有一個孤零零的「好」——於是回了一段自我介紹。
+	const transcript = buildTranscript(history);
+
 	const out = await runAgentLoop(
 		[{ role: "user", content: [{ type: "text", text: question }] }],
-		{ systemPrompt: systemPrompt(catalog), messages: [], tools: toolList },
+		{ systemPrompt: systemPrompt(catalog), messages: transcript, tools: toolList },
 		{
 			model: MODEL,
 			convertToLlm: (m) => m,
