@@ -166,7 +166,7 @@ export async function query(sql, db) {
 export function youthIndicatorsForPrompt(cat) {
 	if (!cat.youthDatasets) return "";
 	const out = ["## youth_fact 可用的指標", ""];
-	out.push("格式：indicator_id  [value_type]  單位  ← 資料集中文名");
+	out.push("格式：indicator_id  [value_type]  單位  地理層級  期間  gender=可用的性別值");
 	out.push("⚠ 標記代表該 indicator_id 跨資料集重複，必須同時指定 dataset_id。");
 	out.push("");
 	for (const [ds, d] of Object.entries(cat.youthDatasets)) {
@@ -180,6 +180,8 @@ export function youthIndicatorsForPrompt(cat) {
 				i.unit ? `${i.unit}` : "",
 				`${i.area_levels.join("/")}`,
 				`${i.period}`,
+				// 性別值一定要印出來：預設篩 total 會在 21/70 個資料集炸掉
+				i.genders ? `gender=${i.genders.join(",")}` : "",
 			].filter(Boolean);
 			out.push(bits.join("  "));
 		}

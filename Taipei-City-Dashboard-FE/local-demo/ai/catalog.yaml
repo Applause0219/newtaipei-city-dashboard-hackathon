@@ -243,8 +243,16 @@ tables:
         values: ["total", "male", "female", "other", "unknown"]
         neutral_value: "total"
         note: >-
-          問題沒提到性別時篩 total。要做男女對照，用 series[].filter
-          分別指定 male／female，不要放進最外層 filters。
+          ⚠ 不要預設篩 total。70 個資料集裡有 21 個根本沒有 total 列——
+          生育率只有 female（那本來就是婦女指標）、結婚只有 male／female、
+          消費是 null。篩下去會得到空結果，而 SQL 不會報錯。
+
+          正確做法：去看該指標在「youth_fact 可用的指標」清單裡的 genders。
+          清單有寫 total 才可以篩 total；沒寫就**直接不要放 gender 條件**，
+          讓 aggregate 把各性別加總起來。
+
+          要做男女對照時，用 series[].filter 分別指定 male／female，
+          不要放進最外層 filters。
       area_name:
         type: category
         label: 行政區名
