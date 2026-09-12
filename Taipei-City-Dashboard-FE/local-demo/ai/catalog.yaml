@@ -176,8 +176,8 @@ tables:
         label: 老化指數
         note: percent28 / percent24 × 100。臺北 2025 為 190.77。
 
-  youth_fact:
-    label: 新北市青年統計事實表（統一長表）
+  youth_fact_named:
+    label: 新北市青年統計事實表（統一長表，已帶行政區名）
     city: metrotaipei
     # 長表：同一個 x 有很多列，沒有聚合就會畫出重複的點
     long_table: true
@@ -187,7 +187,7 @@ tables:
       一列 = 一個資料集 × 一個指標 × 一個期間 × 一個年齡區間 ×
       一種性別 × 一個地理單位。**這是長表**，同一個行政區有很多列，
       所以一定要填 aggregate，否則同一區會畫出很多個點。
-    source: 新北市青年儀表板 ETL（70 個資料集 UNION 而成的 materialized view）
+    source: 新北市青年儀表板 ETL（70 個資料集 UNION 而成，外加行政區名對照）
     note: >-
       這張表把 70 個資料集收在同一個結構裡，所以跨領域比較
       （人口 × 就業 × 居住）只是同一張表上的一次 GROUP BY。
@@ -245,10 +245,19 @@ tables:
         note: >-
           問題沒提到性別時篩 total。要做男女對照，用 series[].filter
           分別指定 male／female，不要放進最外層 filters。
+      area_name:
+        type: category
+        label: 行政區名
+        groupable: true
+        note: >-
+          **做分區圖時 x 軸請用這一欄，不要用 area_code。**
+          area_code 是數字代碼（65000170），圖表 x 軸顯示出來沒有人看得懂。
+          非行政區層級（全國 TW、統計區 A6501-01）沒有對照，會保留原代碼。
       area_code:
         type: category
         label: 地理代碼
         groupable: true
+        note: 數字代碼。畫圖用 area_name，這一欄留給需要精確比對的場合。
       area_level:
         type: category
         label: 地理層級

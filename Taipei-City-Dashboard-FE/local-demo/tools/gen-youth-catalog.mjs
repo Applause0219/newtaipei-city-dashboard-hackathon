@@ -14,6 +14,9 @@
 //   只用 indicator_id 篩選會把兩個資料集的數字加在一起，
 //   SQL 不會報錯，畫出來是一個看起來正常、實際上是兩份資料相加的數字。
 //
+// 讀 youth_fact_named（帶行政區名的 view）而不是 youth_fact：
+// 兩者列數相同，但目錄要與模型實際會查的表一致。
+//
 // 輸出 ai/catalog-youth.yaml。
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -49,14 +52,14 @@ const rows = await q(`
 	       count(*)                AS rows,
 	       bool_or(age_lower IS NOT NULL)                    AS has_age,
 	       bool_or(gender IS NOT NULL AND gender <> 'total') AS has_gender
-	FROM public.youth_fact
+	FROM public.youth_fact_named
 	GROUP BY 1, 2
 	ORDER BY 1, 2`);
 
 // 跨資料集重複的 indicator_id——模型只填 indicator_id 時必須同時指定 dataset_id
 const dup = await q(`
 	SELECT indicator_id, count(DISTINCT dataset_id) AS n
-	FROM public.youth_fact
+	FROM public.youth_fact_named
 	GROUP BY 1 HAVING count(DISTINCT dataset_id) > 1
 	ORDER BY 1`);
 

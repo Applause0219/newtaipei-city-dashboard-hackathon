@@ -1,6 +1,6 @@
 # 由 tools/gen-youth-catalog.mjs 產生，不要手改。
 # 來源：資料庫 youth_fact（真相）＋ DE 的 job_config.json（語意）
-# 產生時間：2026-09-12 08:49
+# 產生時間：2026-09-12 09:08
 
 # 這些 indicator_id 跨資料集重複。只篩 indicator_id 會把多份資料
 # 的數字加在一起，所以必須同時指定 dataset_id。validateSpec 會擋。

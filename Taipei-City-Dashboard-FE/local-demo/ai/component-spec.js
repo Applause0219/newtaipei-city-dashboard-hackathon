@@ -237,21 +237,34 @@ export function validateSpec(spec, catalog) {
 }
 
 /** 組 WHERE 條件（不含固定順序的部分） */
-function whereClause(spec, extra = []) {
-	const parts = [];
+export function whereClause(spec, extra = []) {
 	// 先 spec.filters 再 series 自己的：後者用來表達「同欄位不同值」，
 	// 例如同一個 percent7，一個數列篩「男」、另一個篩「女」。
+	const conds = [];
 	for (const f of [...(spec.filters || []), ...extra]) {
 		const col = quoteIdent(f.column);
-		if ("eq" in f) parts.push(`${col} = ${lit(f.eq)}`);
-		if ("ne" in f) parts.push(`${col} <> ${lit(f.ne)}`);
+		if ("eq" in f) conds.push(`${col} = ${lit(f.eq)}`);
+		if ("ne" in f) conds.push(`${col} <> ${lit(f.ne)}`);
 	}
 	for (const v of spec.x?.exclude || []) {
-		parts.push(`${quoteIdent(spec.x.column)} <> ${lit(v)}`);
+		conds.push(`${quoteIdent(spec.x.column)} <> ${lit(v)}`);
 	}
+
+	const parts = [...conds];
+
+	// 「只取最新一期」的子查詢**必須帶上同一組篩選條件**。
+	//
+	// 寬表時代不帶也沒事：一張表就是一個資料集，全表最大值就是它的最大值。
+	// 長表完全不同——youth_fact 有 70 個資料集擠在一起，各自的最新期不一樣。
+	// 不帶條件算出來的是「全表最新」（2026-12-01），而租金資料最新只到
+	// 2026-07-01，於是整批被濾光，得到「查不到任何資料列」。
+	//
+	// 這個錯不會報 SQL 錯誤，只會回空結果——實測 22 題裡一次炸掉 5 題。
 	if (spec.latest_by) {
 		const c = quoteIdent(spec.latest_by);
-		parts.push(`${c} = (SELECT max(${c}) FROM public.${quoteIdent(spec.table)})`);
+		const t = `public.${quoteIdent(spec.table)}`;
+		const inner = conds.length ? ` WHERE ${conds.join(" AND ")}` : "";
+		parts.push(`${c} = (SELECT max(${c}) FROM ${t}${inner})`);
 	}
 	return parts.length ? "WHERE " + parts.join("\n      AND ") : "";
 }

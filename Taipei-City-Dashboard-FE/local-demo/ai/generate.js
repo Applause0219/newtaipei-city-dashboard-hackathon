@@ -3,7 +3,7 @@
 // 「編出來一定先跑過再說」這一步，是 AimchartAI 架構圖 Δ4 留下那個問題的答案：
 // 模型不碰數字，但我們也不無條件相信它的 spec。SQL 一定先執行、驗過對齊，
 // 才會拿去註冊或顯示給人看。
-import { validateSpec, compileSpec, orderProbeSQL, normalizeSpec } from "./component-spec.js";
+import { validateSpec, compileSpec, orderProbeSQL, normalizeSpec, whereClause } from "./component-spec.js";
 import { loadCatalog, query } from "./catalog.js";
 import { buildSpecPrompt } from "./spec-prompt.js";
 import { generateSpec } from "./provider.js";
@@ -48,8 +48,27 @@ export async function generateComponent(rawSpec, { db } = {}) {
 	let period = null;
 	if (spec.latest_by) {
 		try {
-			const [r] = await query(`SELECT max("${spec.latest_by}") AS v FROM public."${spec.table}"`, db);
-			if (r?.v != null) period = String(r.v);
+			// 必須帶上**每個數列自己的**篩選條件，不只是 spec.filters。
+			//
+			// 指標的篩選（indicator_id = ...）住在 series[].filter 裡，
+			// 不在 spec.filters。只帶 spec.filters 算出來的是
+			// 「所有區級資料的最新日期」——租金畫的是 2026-07，
+			// 標籤卻寫 2026-09，而那是另一個資料集的日期。
+			//
+			// 排除 latest_by 本身，否則子查詢會自我參照。
+			const bare = { ...spec, latest_by: undefined };
+			const seen = [];
+			for (const sr of spec.series) {
+				const w = whereClause(bare, sr.filter ? [sr.filter] : []);
+				const [r] = await query(
+					`SELECT max("${spec.latest_by}") AS v FROM public."${spec.table}" ${w}`, db);
+				if (r?.v != null) seen.push(String(r.v));
+			}
+			const uniq = [...new Set(seen)].sort();
+			// 各數列期間不同時照實說出範圍，不要挑一個當代表
+			period = uniq.length === 0 ? null
+				: uniq.length === 1 ? uniq[0]
+				: `${uniq[0]} – ${uniq[uniq.length - 1]}`;
 		} catch { /* 問不到就不寫，不要因此讓生成失敗 */ }
 	} else {
 		const cov = catalog.tables?.[spec.table]?.coverage;
