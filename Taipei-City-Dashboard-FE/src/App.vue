@@ -160,13 +160,21 @@ function reload3DMRTMapData() {
 }
 
 // Chatroom 功能顯示隱藏
+//
+// 側邊欄是「推擠」不是「覆蓋」：展開時 .app-content 變窄，
+// 儀表板組件重新排版，所以新生成的組件出現時看得到，不會被面板蓋住。
+//
+// mapbox 只監聽 window 的 resize，容器自己變窄它不會重畫，
+// 地圖會被拉扁。resizeMap() 內建 200ms 延遲，剛好等 CSS transition 跑完。
 function chatbotBtnHandler() {
 	isChatBoxShow.value = !isChatBoxShow.value;
+	mapStore.resizeMap();
 }
 
 function hideBtnClickHandler() {
 	isChatBtnShow.value = false;
 	isChatBoxShow.value = false;
+	mapStore.resizeMap();
 }
 
 (watch(
@@ -219,7 +227,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-container">
+  <div
+    class="app-container"
+    :class="{ 'chat-open': isChatBoxShow }"
+  >
     <NotificationBar />
     <NavBar v-if="authStore.currentPath !== 'embed'" />
     <!-- /mapview, /dashboard layouts -->
@@ -279,6 +290,7 @@ onBeforeUnmount(() => {
       <ChatBox
         v-if="isChatBoxShow"
         class="chatbox"
+        @close="chatbotBtnHandler"
       />
       <div
         v-if="isChatBtnShow"
@@ -304,14 +316,26 @@ onBeforeUnmount(() => {
 		max-width: 100vw;
 		max-height: 100vh;
 		max-height: calc(var(--vh) * 100);
+
+		// 小幫手側邊欄的兩個尺寸來源，其他元素一律引用它們，不要各自寫死 400px。
+		//   --chat-panel-w  面板本身的寬度（永遠是這個值）
+		//   --chat-width    它「推擠」掉多少版面（收合時 0、覆蓋模式時也是 0）
+		--chat-panel-w: 400px;
+		--chat-width: 0px;
+
+		&.chat-open {
+			--chat-width: var(--chat-panel-w);
+		}
 	}
 
 	&-content {
-		width: 100vw;
+		// 這一行就是「推擠」的全部：內容區變窄，底下的 grid 自己重排。
+		width: calc(100vw - var(--chat-width));
 		max-width: 100vw;
 		height: calc(100vh - 60px);
 		height: calc(var(--vh) * 100 - 60px);
 		display: flex;
+		transition: width 0.18s ease;
 
 		&-main {
 			width: 100%;
@@ -323,7 +347,8 @@ onBeforeUnmount(() => {
 	&-update {
 		position: fixed;
 		bottom: 0;
-		right: 20px;
+		right: calc(20px + var(--chat-width));
+		transition: right 0.18s ease;
 		color: white;
 		opacity: 0.3;
 		transition: opacity 0.3s;
@@ -340,36 +365,52 @@ onBeforeUnmount(() => {
 }
 
 // Chatroom 樣式
+//
+// 從「右下角浮動小視窗」改成「右側側邊欄」。
+// 面板本身仍然是 position: fixed，版面的讓位交給 .app-content 的 width 去算——
+// 這樣三種 layout 分支（dashboard / admin / component）都不必各自改 DOM。
 .chatbot-container {
-	position: fixed;
-	bottom: 1.5rem; // Tailwind bottom-6 → 24px
-	right: 1.5rem;
-	display: flex;
-	align-items: flex-end;
-	gap: 1rem; // Tailwind gap-4 → 16px
-	z-index: 10;
-
 	.chatbox {
-		width: 400px;
-		height: 500px;
-		margin-bottom: 35px;
+		position: fixed;
+		top: 61px; // NavBar 的 height: 60px 加上 border-bottom: 1px
+		right: 0;
+		bottom: 0;
+		// border-box：讓左側那道框線算在 400px 之內，
+		// 面板左緣才會剛好貼齊 .app-content 的右緣，不會壓到內容 1px
+		box-sizing: border-box;
+		width: var(--chat-panel-w);
+		height: auto;
+		margin: 0;
+		z-index: 10;
+
+		// 貼齊右緣之後，圓角和外框只留下左邊那道還有意義
+		border-radius: 0;
+		border-top: none;
+		border-right: none;
+		border-bottom: none;
 	}
 
 	.chatbot-btn-area {
-		position: relative;
+		position: fixed;
+		bottom: 1.5rem;
+		right: 1.5rem;
+		z-index: 11;
 		display: flex;
 		flex-direction: column;
+
 		.hide-chat-btn {
 			margin-left: auto;
 			button {
 				font-size: 16px;
 			}
 		}
+
 		.hide-chat-btn button::before {
 			content: "–";
-			font-weight: bold; /* 變粗 */
-			font-size: 20px; /* 可以順便調整大小 */
+			font-weight: bold;
+			font-size: 20px;
 		}
+
 		.chatbot-btn {
 			width: 70px;
 			height: 70px;
@@ -388,33 +429,51 @@ onBeforeUnmount(() => {
 	}
 }
 
-.chat-overlay {
-    display: none; // 桌機預設隱藏
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.8);
-    z-index: 9;
+// 面板展開時就不需要浮動按鈕了：面板自己有關閉鈕，
+// 按鈕留著只會壓在儀表板組件上面。收合後它才是唯一的開啟入口。
+.app-container.chat-open .chatbot-btn-area {
+	display: none;
 }
 
-// 手機板小幫手
+.chat-overlay {
+	display: none; // 桌機是推擠，不需要遮罩
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.8);
+	z-index: 9;
+}
+
+// 窄螢幕：推擠會把儀表板擠到不能看，退回覆蓋模式。
+// --chat-width 歸零，其他所有引用它的地方（內容區寬度、倒數計時器、
+// 浮動按鈕位置）都會自己跟著回到原位，不需要逐一覆寫。
+@media (max-width: 900px) {
+	.app-container.chat-open {
+		--chat-width: 0px;
+	}
+}
+
+// 手機：面板改成從底部升起的全寬視窗，維持官方原本的行為
 @media (max-width: 600px) {
 	.chat-overlay {
-        display: block; // 手機才顯示
-    }
+		display: block;
+	}
 
-    .chatbot-container {
-        flex-direction: column;
-        width: 100vw;
-        right: 0;
-        bottom: 0;
-        padding: 0.5rem;
-        box-sizing: border-box;
-
-        .chatbox {
-            width: 100%;
+	.chatbot-container {
+		.chatbox {
+			top: auto;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			width: 100%;
 			height: 68vh;
-            margin: 0;
-        }
-    }
+			border: 1px solid #888787;
+			border-bottom: none;
+			border-radius: 15px 15px 0 0;
+		}
+
+		.chatbot-btn-area {
+			right: 1.5rem;
+		}
+	}
 }
 </style>
