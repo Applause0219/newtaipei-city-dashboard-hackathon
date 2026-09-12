@@ -1,0 +1,43 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_oas_age_structure_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 23 18 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "年齡結構",
+      "oas.bas.ntpc.gov.tw"
+    ],
+    "description": "新北市現住人口年齡結構年度資料，來源為 OAS 報表 11844。",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_oas_age_structure_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市現住人口之年齡結構（OAS 11844）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://oas.bas.ntpc.gov.tw/DgbasWeb/Page/StatFile2.aspx?Mode=3&CateNo=121&ParentNo=null12102",
+    "source_type": "新北市政府統計資料庫查詢平台（ASP.NET WebForms，無 API）",
+    "source_dept": "新北市政府主計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "OAS 11844 提供 2000-2025 年新北市全市按性別的 0-14、15-64、65 歲以上人口數與百分比、扶老比、扶幼比、扶養比及老化指數。",
+    "etl_description": "動態辨識性別與指標兩個複分類，逐年查詢 3×10 格 HTML 表格；保存原始年齡區間與衍生指標，對帳百分比、扶養/老化公式及 2025 年總人口 4,044,831，並做年度尺度防護。",
+    "sensitivity": "public"
+  }
+}

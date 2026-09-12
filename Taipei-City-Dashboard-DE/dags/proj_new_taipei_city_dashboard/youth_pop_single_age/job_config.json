@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_pop_single_age",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 17 10 * *",
+    "catchup": false,
+    "tags": ["youth", "新北市", "New-Taipei-City", "人口", "單齡人口", "戶政司"],
+    "description": "New Taipei City single-year-of-age (0-100+) resident population by district and gender, sourced from MOI Household Registration (RIS) village-level open data, aggregated to district level. Foundational weighting table for apportioning 5-year age bands into the 18-35 youth range.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 60
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_pop_single_age",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市單齡（各歲）人口統計",
+    "airflow_update_freq": "monthly",
+    "source": "https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP014/{yyymm}",
+    "source_type": "內政部戶政司 RIS OpenData API (ODRP014)",
+    "source_dept": "內政部戶政司",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "內政部戶政司「村里戶數、單一年齡人口」逐月開放資料，提供全國每一村里、每一單一歲數(0歲至100歲以上)、分性別之現住人口數。本 DAG 篩選新北市所轄村里，依行政區代碼前8碼加總為區級單齡人口，並取各年12月(或當年最新可得月份)作為代表快照，逐年輸出，供其他青年統計資料以單齡人口數作為18-35歲組內分攤(apportionment)之權重依據。同時輸出新北市全市加總列(area_code=65000)。",
+    "etl_description": "Call RIS ODRP014 API for a fixed list of ROC yyymm periods (December of each year 2018-2025, plus the latest available month for the current year); filter to New Taipei City villages (site_id startswith 新北市); coerce all people_age_*_m/_f columns to numeric; group by district (district_code[:8]) and sum across villages; melt each single-age column (000-099, 100up) into long rows for gender in {male, female, total}; also compute a city-level (area_code=65000) aggregate; emit rows in the shared youth_fact long-format contract.",
+    "sensitivity": "public"
+  }
+}

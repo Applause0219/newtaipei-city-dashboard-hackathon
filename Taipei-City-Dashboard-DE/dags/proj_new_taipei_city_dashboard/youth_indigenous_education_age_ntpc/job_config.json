@@ -1,0 +1,47 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_indigenous_education_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 16 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "原住民族",
+      "教育",
+      "年齡",
+      "性別"
+    ],
+    "description": "New Taipei resident indigenous population age and education counts. The 18-35 result is apportioned at query time because 15-19 and 35-39 cross the requested boundaries.",
+    "default_args": {
+      "owner": "airflow",
+      "email": [
+        "DEFAULT_EMAIL_LIST"
+      ],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_indigenous_education_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市十五歲以上現住原住民族人口教育程度（按年齡、性別、平地／山地）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://data.ntpc.gov.tw/datasets/6B47F1A9-35C3-4085-8AF3-EE36D629ACBC",
+    "source_type": "新北市資料開放平臺 API",
+    "source_dept": "新北市政府主計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "來源為 1224 筆年度×年齡×性別×屬性寬表，itemvalue5-itemvalue32 為 28 個教育程度計數。平地／山地保留於 breakdown，來源沒有行政區欄位，固定為新北市全市 area_code=65000。",
+    "etl_description": "Paginate with a browser User-Agent, resolve semantic aliases from the dataset field description, parse age labels as integer intervals, emit one fact per source education metric, and validate every 合計 = 平地 + 山地 cell. Apply a three-times-median scale guard using 15歲以上／合計／總計畢業 by year. Keep source age bands only; 18-35 apportionment is query-stage and no rate scaling is performed.",
+    "sensitivity": "public"
+  }
+}

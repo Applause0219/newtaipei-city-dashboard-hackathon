@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_divorce_age_structure_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 18 4,10 *",
+    "catchup": false,
+    "tags": ["youth", "新北市", "New-Taipei-City", "離婚", "年齡結構", "率"],
+    "description": "New Taipei divorce population age structure rates by gender. The 15-19 and 35-39 bands cross the 18-35 boundary; the source rates are retained and no 18-35 rate is materialized.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_divorce_age_structure_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市離婚人口年齡結構比（按性別）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://data.ntpc.gov.tw/datasets/f9618881-5cf2-4bcc-83b1-5021885dd4f3",
+    "source_type": "新北市資料開放平臺 API",
+    "source_dept": "新北市政府主計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "新北市15歲以上離婚人口按年齡組與性別的結構比，2006–2024逐年資料。各性別年齡組加總為100%。",
+    "etl_description": "Fetch the JSON array with a browser User-Agent, resolve field1 and percent2-percent13 by their documented age/gender roles, parse each age band into integer bounds, verify each gender distribution sums to 100, and retain source rates only. The source is value_type=rate: do not population-scale rates and do not materialize an 18-35 rate without numerator/denominator information. A three-times-median annual scale guard fails on unknown scope changes.",
+    "sensitivity": "public"
+  }
+}

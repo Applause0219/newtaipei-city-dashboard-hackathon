@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_moi_population_single_age",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 6 10 * *",
+    "catchup": false,
+    "tags": ["youth", "新北市", "New-Taipei-City", "人口", "單齡", "戶政司"],
+    "description": "New Taipei City city-level population by single age and sex from MOI dataset 14226. This is an exact official snapshot/alternate source; the existing ODRP014 DAG remains the district-level weighting source.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_moi_population_single_age",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市人口數單一年齡組（內政部統計）",
+    "airflow_update_freq": "monthly",
+    "source": "https://data.gov.tw/dataset/14226",
+    "source_type": "內政部統計處統計資料服務（data.gov.tw 資料集14226）",
+    "source_dept": "內政部統計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "按區域與性別提供0至99歲及100歲以上人口數。本DAG保留新北市全市的男、女、性別總計列，作為既有村里級ODRP014資料的市級官方交叉核對與歷史快照來源。",
+    "etl_description": "從data.gov.tw目錄取得目前CSV資源（失敗時使用已核驗資源網址），只保留標籤中的新北市與性別總計／男／女列；解析單齡欄位、逐齡核對總計等於男女相加，保留來源列標籤。來源資源是統計服務快照，完整歷史需依備註中的ym／ymt查詢，不能把單次資源誤標成完整歷史序列。",
+    "sensitivity": "public"
+  }
+}

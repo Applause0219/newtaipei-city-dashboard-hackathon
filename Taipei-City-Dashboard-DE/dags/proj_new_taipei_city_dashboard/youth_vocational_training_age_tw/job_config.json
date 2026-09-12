@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_vocational_training_age_tw",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 15 7 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "skills",
+      "vocational-training",
+      "勞動部",
+      "New-Taipei-City"
+    ],
+    "description": "Public vocational training institution completers by training type, institution, gender and age group, from the Ministry of Labor data.gov.tw dataset.",
+    "default_args": {
+      "owner": "airflow",
+      "email": [
+        "DEFAULT_EMAIL_LIST"
+      ],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_vocational_training_age_tw",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "公立職訓機構自辦訓練結訓人數－按性別、年齡、教育程度、訓練機構及訓練性質分",
+    "airflow_update_freq": "yearly",
+    "source": "https://data.gov.tw/dataset/146541",
+    "source_type": "data.gov.tw 勞動部 CSV",
+    "source_dept": "勞動部",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "提供公立職訓機構自辦職前與在職訓練的結訓人數，按機構、性別、年齡、教育程度交叉統計。",
+    "etl_description": "先從 data.gov.tw 伺服器渲染頁面的 JSON-LD 找到目前 CSV contentUrl，再以瀏覽器 User-Agent 下載；以 CSV parser 及語意欄位匹配解析，逐列檢查人數等於男女人數及九個年齡組加總。輸出年齡與性別的平行邊際，不假裝來源提供年齡×性別交叉表。",
+    "sensitivity": "public"
+  }
+}

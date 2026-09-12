@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_stat_area_school_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 5 10 6,12 *",
+    "catchup": false,
+    "tags": ["youth", "新北市", "New-Taipei-City", "人口", "統計區", "單齡"],
+    "description": "New Taipei City second-level statistical-area population by single age 0-26 and sex from MOI dataset 18680. Ages 18-26 are directly exact.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_stat_area_school_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市統計區單歲年齡組學齡人口統計",
+    "airflow_update_freq": "twice a year",
+    "source": "https://data.gov.tw/dataset/18680",
+    "source_type": "內政部統計處 SEGIS 統計區 XML（data.gov.tw 資料集18680）",
+    "source_dept": "內政部統計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "新北市第二級發布區0至26歲單一年齡人口數，含總計、男性及女性。可直接支援18至26歲統計區空間分布，但不涵蓋27至35歲。",
+    "etl_description": "從data.gov.tw目錄解析新北市二級發布區資源URL，下載並解析SEGIS XML；動態辨識A0至A26的總計／男／女欄位，逐格核對男女合計，保留統計區CODE2與原始單齡欄名。18至26歲輸出為exact，不能延伸宣稱涵蓋完整18至35歲。",
+    "sensitivity": "public"
+  }
+}

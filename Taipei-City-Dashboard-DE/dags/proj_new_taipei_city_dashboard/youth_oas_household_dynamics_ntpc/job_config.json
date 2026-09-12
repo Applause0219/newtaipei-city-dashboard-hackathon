@@ -1,0 +1,43 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_oas_household_dynamics_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 22 18 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "戶籍動態",
+      "oas.bas.ntpc.gov.tw"
+    ],
+    "description": "新北市戶籍動態年度資料，來源為 OAS 報表 11842。",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_oas_household_dynamics_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市戶籍動態（OAS 11842）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://oas.bas.ntpc.gov.tw/DgbasWeb/Page/StatFile2.aspx?Mode=3&CateNo=121&ParentNo=null12102",
+    "source_type": "新北市政府統計資料庫查詢平台（ASP.NET WebForms，無 API）",
+    "source_dept": "新北市政府主計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "OAS 11842 提供 1998-2025 年新北市全市遷入、遷出、出生、死亡、婚姻及各分項與率；1999、2000 的死亡女性細項與總數矛盾、2018 的遷入分項少 1，三年明確排除。此報表沒有年齡維度，因此 18-35 歲判定為 unavailable，不以戶籍動態總量推估青年數。",
+    "etl_description": "以單一 requests.Session 重放 WebForms 導覽 postback，動態讀取 lisComplex 與 lisDate，依頁面 JavaScript 規則組合 axX/axCode，逐年查詢 HTML 表格；每年斷言 52 格，並執行性別、遷入/遷出分項、自然增加率與社會增加率對帳及年度尺度防護。",
+    "sensitivity": "public"
+  }
+}

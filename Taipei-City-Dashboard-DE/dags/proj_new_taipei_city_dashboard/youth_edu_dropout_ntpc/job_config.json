@@ -1,0 +1,46 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_edu_dropout_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "11 16 5 2,8 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "教育",
+      "大專校院",
+      "退學",
+      "經濟困難",
+      "工作",
+      "傷病",
+      "新北市"
+    ],
+    "description": "New Taipei City college dropout counts by academic year, school, study system, gender and reason. The UDB source has no student age; age fields remain null and 18-35 is unavailable.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_edu_dropout_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市大專校院退學人數（含原因）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://udb.moe.edu.tw/download/udata/static_file/114/學14-2.退學人數-以「校(含學制班別)」統計(111學年度起).csv",
+    "source_type": "教育部大專校院校務資訊公開 UDB 靜態 CSV",
+    "source_dept": "教育部",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "教育部大專校院校務資訊公開的校級退學統計。本DAG以教育部統計處 student.csv 的學校代碼／名稱與縣市欄位建立校址縣市對照，只保留校址在新北市的學校；輸出退學總計、學生自請與學校勒令兩個小計及各原因。來源沒有學生年齡，18-35為unavailable。",
+    "etl_description": "Fetch the specified UDB static CSVs with a browser User-Agent and percent-encoded URLs. The 114 directory currently contains academic years 111-113; the un_update file contains 105-110. Probe the other requested directories and include them if they become available, preferring the newest copy for duplicate academic years. Build a school-to-county crosswalk from the MOE student.csv files by school code first and school name second, normalising pre-reform county names and failing loudly if any UDB school remains unresolved. Filter by campus county New Taipei City. Parse counts with a standards-compliant CSV parser and never convert ... suppression markers to zero. For 111 onward, reconcile self-requested reasons to their subtotal, school-ordered reasons to their subtotal, and the two subtotals to the overall total. For legacy years, reconcile visible causes when their sum matches the legacy total; if the historical schema omits a cause, record checks_skipped_incomplete_schema instead of inventing a zero. Hidden cells are recorded and the affected check is explicitly skipped. Add a three-times annual scale guard and retain raw reason scope in breakdown.",
+    "sensitivity": "public"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_income_tax_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 21 20 4,10 *",
+    "catchup": false,
+    "tags": ["economic", "youth", "綜合所得稅", "財政部", "新北市", "行政區"],
+    "description": "財政部財政資訊中心綜合所得稅地區統計，彙整新北市29區納稅單位、所得總額與加權平均所得；來源沒有年齡欄。",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_income_tax_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市各區綜合所得稅納稅單位與所得總額",
+    "airflow_update_freq": "twice a year",
+    "source": "https://www.fia.gov.tw/WEB/fia/ias/ias{roc_year}/{roc_year}_165-9.csv",
+    "source_type": "財政部財政資訊中心綜合所得稅 CSV",
+    "source_dept": "財政部財政資訊中心",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "民國101至111年按村里發布綜合所得稅資料，本DAG篩選新北市並彙整至行政區；所得金額依來源千元口徑。",
+    "etl_description": "逐一抓取民國101至111年官方CSV，以行政區欄位角色辨識新舊欄名，篩選新北市村里後按行政區加總納稅單位與所得總額，再以總額除以納稅單位取得加權平均。沒有年齡欄，age三欄保留NULL。",
+    "sensitivity": "public"
+  }
+}

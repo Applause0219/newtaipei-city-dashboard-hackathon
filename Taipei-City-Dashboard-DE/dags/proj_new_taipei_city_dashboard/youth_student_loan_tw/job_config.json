@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_student_loan_tw",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 21 20 * *",
+    "catchup": false,
+    "tags": ["economic", "youth", "就學貸款", "聯徵中心", "全國"],
+    "description": "聯徵中心新增個人就學貸款月資料，保留申貸人數、總金額與平均金額；來源沒有年齡或居住地，不能反推18至35歲。",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_student_loan_tw",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新增個人就學貸款月資料",
+    "airflow_update_freq": "monthly",
+    "source": "https://www.jcic.org.tw/jcweb/en/services/inquiry/public/files/Stut_New_Amt.CSV",
+    "source_type": "聯徵中心 Open Data CSV",
+    "source_dept": "財團法人金融聯合徵信中心",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "2012年起按月提供新增個人學貸總人數、總金額（仟元）及平均金額（仟元）。",
+    "etl_description": "以欄位角色辨識年月、人數、總金額與平均金額；輸出月資料。學貸學生不是年齡欄位，age三欄全部保留為NULL。完整年度才進行跨年尺度檢核。",
+    "sensitivity": "public"
+  }
+}

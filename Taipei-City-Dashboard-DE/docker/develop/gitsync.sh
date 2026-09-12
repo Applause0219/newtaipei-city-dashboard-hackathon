@@ -41,8 +41,7 @@ if [[ "$LOCAL" != "$REMOTE" ]]; then
   # 如果有 Docker：先拉新 image，再起服務
   if command -v /usr/bin/docker >/dev/null 2>&1; then
     # 使用 docker compose（新語法）；若你用舊版 docker-compose，改成 /usr/bin/docker-compose
-    /usr/bin/docker compose -f docker-compose.yaml pull >> "$LOG" 2>&1 || true
-    /usr/bin/docker compose -f docker-compose.yaml up -d --remove-orphans >> "$LOG" 2>&1 || true
+    COMPOSE_PROJECT_NAME="airflow-sit" /usr/bin/docker compose -f docker-compose.yaml up -d --build >> "$LOG" 2>&1
     # 或者只想 restart：
     # /usr/bin/docker compose restart >> "$LOG" 2>&1 || true
   fi

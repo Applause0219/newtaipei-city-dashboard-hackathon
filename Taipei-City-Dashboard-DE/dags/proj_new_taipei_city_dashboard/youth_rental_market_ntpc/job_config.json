@@ -1,0 +1,44 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_rental_market_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 6 1,11,21 * *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "居住",
+      "租賃實價登錄",
+      "租金"
+    ],
+    "description": "New Taipei rental-contract median rent by district and month. Tenant age is unavailable; 18-35 is not inferred or apportioned.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_rental_market_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市租賃實價登錄租金中位數（行政區、月份）",
+    "airflow_update_freq": "every 10 days",
+    "source": "https://data.gov.tw/dataset/173898",
+    "source_type": "data.gov.tw 目錄頁解析 data.ntpc CSV",
+    "source_dept": "新北市政府地政局",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "來源是新北市租賃實價登錄資料，依租賃日期月份與行政區計算租金中位數。資料含租賃契約紀錄與歷史租賃日期，但下載檔是滾動快照，不代表每個歷史月份的完整收件母體。",
+    "etl_description": "每次先以瀏覽器 User-Agent 讀取 data.gov.tw/173898 伺服器渲染頁面並解析最新 data.ntpc CSV URL，再用標準 CSV parser 讀取。依角色別名尋找行政區、民國租賃日期與租金欄位；民國日期轉西元月起訖日，數值解析會去除千分位逗號，未知欄位、行政區、日期或租金直接 raise。輸出 value_type=median，不把租金當 count 或 rate。以 breakdown.source_row_count 對帳輸入紀錄與分組輸出；另按年度租金中位數執行三倍尺度防護，KNOWN_BAD_YEARS 目前為空。",
+    "sensitivity": "public"
+  }
+}

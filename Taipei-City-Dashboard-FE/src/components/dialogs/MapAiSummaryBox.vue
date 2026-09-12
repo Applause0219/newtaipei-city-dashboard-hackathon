@@ -124,7 +124,7 @@ const onMouseUp = () => {
       </div>
       <div class="row">
         <span class="meta-label">▪ 使用 AI 模型</span>
-        <span class="description"> : {{ response?.data?.data?.model || "Llama3.3-FFM-70B-32K" }}</span>
+        <span class="description"> : Llama3.3-FFM-70B-32K</span>
       </div>
       <div class="row">
         <span class="meta-label">▪ 資料分析時間</span>

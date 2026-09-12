@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_youbike_station_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "*/15 * * * *",
+    "catchup": false,
+    "tags": ["youth", "mobility", "YouBike", "New-Taipei-City"],
+    "description": "New Taipei public bicycle station inventory snapshots by district and station.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 120
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_youbike_station_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市公共自行車站點即時車位",
+    "airflow_update_freq": "every 15 minutes",
+    "source": "https://data.gov.tw/dataset/146969",
+    "source_type": "New Taipei open CSV",
+    "source_dept": "新北市政府交通局",
+    "gis_format": "CSV",
+    "output_coordinate": "WGS84",
+    "is_geometry": 0,
+    "dataset_description": "Current YouBike 2.0 station capacity, available bikes, and empty docks by New Taipei district.",
+    "etl_description": "Use the public New Taipei CSV directly, without TDX credentials. Parse all comma-containing fields with csv.DictReader, map every district to the established 65000xxx codes, preserve the source snapshot timestamp, and reconcile each emitted indicator total to the input station rows.",
+    "sensitivity": "public"
+  }
+}

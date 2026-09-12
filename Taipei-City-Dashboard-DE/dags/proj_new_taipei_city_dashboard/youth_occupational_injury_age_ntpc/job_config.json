@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_occupational_injury_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 22 20 4,10 *",
+    "catchup": false,
+    "tags": ["youth", "職業安全", "職災", "勞保", "年齡組", "全國"],
+    "description": "全國勞保職業傷害給付人次，按半年期、給付種類、職業傷害類型、性別與年齡組輸出；來源沒有新北市欄位。18-35 僅能在查詢端對 15-19 與 35-39 邊界組做 apportioned，不在 ETL 固化。",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_occupational_injury_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "職業傷害保險給付人次（按年齡組與性別）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://data.gov.tw/dataset/13333",
+    "source_type": "政府資料開放平臺／勞動部勞工保險局",
+    "source_dept": "勞動部勞工保險局",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "資料集 13333 的 10801-10806 至目前半年期 CSV；值是職災保險給付人次，不是去重後勞工人數，且僅有全國資料，area_code 使用 TW。",
+    "etl_description": "每次先抓 data.gov.tw 伺服器渲染資料集頁，以角色別欄位別名解析 CSV 資源 URL，再用正規 CSV parser 讀取並移除千分位逗號。民國半年期轉西元起訖日；年齡標籤嚴格轉整數區間，未知或新標籤直接 raise。保留來源所有給付種類、傷害類型、性別與年齡組，對每半年期做輸入／輸出總人次對帳；另以各民國年合計加上三倍中位數尺度防護。",
+    "sensitivity": "public"
+  }
+}

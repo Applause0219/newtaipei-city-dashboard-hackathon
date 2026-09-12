@@ -1,0 +1,47 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_bureau_program_stats_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 24 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "青年局",
+      "職涯",
+      "創業",
+      "補助"
+    ],
+    "description": "New Taipei Youth Bureau A05-A08 program statistics. The ETL keeps source age bands only; A05 can be apportioned to 18-35 at query time, while A06-A08 have unavailable participant age.",
+    "default_args": {
+      "owner": "airflow",
+      "email": [
+        "DEFAULT_EMAIL_LIST"
+      ],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_bureau_program_stats_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市青年局 A05-A08 青年服務、青創課程及綜合發展補助統計",
+    "airflow_update_freq": "twice a year",
+    "source": "https://www.youth.ntpc.gov.tw/youth/ch/app/folder/50",
+    "source_type": "新北市政府青年局 PDF 統計分析報告",
+    "source_dept": "新北市政府青年局",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "A05 113 年青職基地職涯服務、A06 114 年青創小聚（另含 115 年 1-6 月）、A07 113 年綜合發展補助性別統計、A08 112 年綜合發展補助統計。來源均無行政區欄位，固定為新北市全市 area_code=65000。",
+    "etl_description": "Fetch every official PDF with a browser User-Agent, require a PDF magic header and a text layer, then parse semantic sections with Poppler pdftotext -layout. Parse A05 age labels to integer intervals without age inference. Keep A06-A08 participant age bounds null because the reports do not provide participant age. Validate each source section against its reported totals; omit A08 applicant-type subsection because 86+10+12=108 conflicts with the reported 111 cases. Apply a three-times-median scale guard to each comparable series. A05 18-35 handling is query-stage apportionment only; no 18-35 result is materialized.",
+    "sensitivity": "public"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_unemployment_rate_age",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 23 15 * *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "青年",
+      "失業率",
+      "年齡",
+      "主計總處",
+      "全國"
+    ],
+    "description": "Taiwan historical unemployment rates by age, gender and education dimensions from the DGBAS open-data XML. Rates are not converted to counts or population-scaled for ages 18-35.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_unemployment_rate_age",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "失業率（按年齡組別、性別及教育程度）",
+    "airflow_update_freq": "monthly",
+    "source": "https://data.gov.tw/dataset/6637",
+    "source_type": "行政院主計總處資料開放 XML",
+    "source_dept": "行政院主計總處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "台灣地區人力資源調查失業率，含年、年月、性別、年齡組別及教育程度別欄位。",
+    "etl_description": "Fetch the live mp0101a07.xml resource with a browser User-Agent, resolve period values as YYYY or YYYYMM/YYYYMmm, parse age labels into integer intervals, emit the source's age/gender/education rates without any 18-35 conversion, and reconcile every numeric selected source cell to an output row. The source is nationwide, so area_code=TW and area_level=country rather than the New Taipei code.",
+    "sensitivity": "public"
+  }
+}

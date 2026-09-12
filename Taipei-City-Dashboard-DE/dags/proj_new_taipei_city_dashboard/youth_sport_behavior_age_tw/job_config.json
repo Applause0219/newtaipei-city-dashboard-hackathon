@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_sport_behavior_age_tw",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 15 8 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "health",
+      "sport",
+      "體育署",
+      "New-Taipei-City"
+    ],
+    "description": "Regular exercise percentage by age from the Sports Administration Sports City Survey. The source is a percentage rate and is not scaled to 18-35.",
+    "default_args": {
+      "owner": "airflow",
+      "email": [
+        "DEFAULT_EMAIL_LIST"
+      ],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_sport_behavior_age_tw",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "運動城市調查各縣市規律運動現況",
+    "airflow_update_freq": "yearly",
+    "source": "https://data.gov.tw/dataset/24375",
+    "source_type": "data.gov.tw 體育署 CSV",
+    "source_dept": "教育部體育署",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "運動現況調查按年齡提供 7333 規律運動的百分比，含整體、拒答及年齡組。",
+    "etl_description": "由 data.gov.tw 頁面解析目前 CSV contentUrl，以標準 CSV parser 讀取；只保留分析標的規律運動比例、分析內容 7333 規律運動、統計項目年齡。百分比逐列保留，不把率轉成人數或按人口比例縮放。",
+    "sensitivity": "public"
+  }
+}

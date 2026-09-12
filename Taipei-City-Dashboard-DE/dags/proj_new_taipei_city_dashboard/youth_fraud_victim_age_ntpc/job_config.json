@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_fraud_victim_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 0 21 7 *",
+    "catchup": false,
+    "tags": ["youth", "安全", "詐欺", "被害人", "年齡組", "全國"],
+    "description": "警政署 114 年第 2 季詐欺案件被害人按年齡與性別的存量；保留原始粗年齡組。18-35 為 unavailable，因 30-39 跨過 35，且這不是可由人口比例拆分的單齡計數。",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_fraud_victim_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "詐欺案件被害人年齡統計（114年第2季）",
+    "airflow_update_freq": "yearly",
+    "source": "https://data.gov.tw/dataset/176657",
+    "source_type": "政府資料開放平臺／內政部警政署刑事警察局 PDF",
+    "source_dept": "內政部警政署刑事警察局",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "114 年第 2 季報告表 2 的被害人存量，含總計、男性、女性與年齡組；來源是全國。",
+    "etl_description": "使用帶瀏覽器 User-Agent 的 requests 下載官方 PDF；執行前用 shutil.which 檢查 pdftotext，使用 -raw 解析唯一包含被害人存量年齡列的表格頁，刻意不選同檔的較上季增減表。嚴格解析 8 個官方年齡列與總計列，將未列出的年齡不詳以總計扣除已列組別的 residual 保存，不猜任何人的年齡，並做三性別對帳。",
+    "sensitivity": "public"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_birth_mother_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 21 20 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "出生",
+      "生母年齡",
+      "單齡",
+      "戶政司",
+      "行政區"
+    ],
+    "description": "New Taipei City births by single year of mother's age, baby gender and district, from MOI Household Registration open data ODRP056 (counted by occurrence date). Mother's age is a single year, so the 18-35 youth range is exact and needs no apportionment.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_birth_mother_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市嬰兒出生數（按生母單齡年齡、行政區）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP056/{roc_year}",
+    "source_type": "內政部戶政司 RIS OpenData API (ODRP056)",
+    "source_dept": "內政部戶政司",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "內政部戶政司「嬰兒出生數按生母年齡」逐年開放資料，按發生日期分。提供每一鄉鎮市區、生母每一單一歲數、分嬰兒性別之出生數。本DAG篩選新北市所轄行政區。生母年齡為單一年齡而非年齡組，所以18-35歲可以exact取得、完全不需分攤。實測涵蓋民國108至114年共7個年度。新北市出生數自2019年27,965人降至2025年15,141人，7年減少46%；其中生母18-35歲者自20,462人降至10,489人，減少49%。2025年生母年齡眾數落在32至35歲，正好在18-35歲青年區間的上緣。",
+    "etl_description": "Fetch one ROC year at a time from the RIS datastore API, paging until totalPage, and probe forward until two consecutive empty years so newly published years are picked up automatically. Critically, RIS returns HTTP 200 with responseCode OD-0102-S for 'no data' rather than a 404, so the response code is checked instead of the HTTP status; relying on the status would silently ingest empty results. Column names are normalised through an alias map because the same dataset uses Chinese column names for ROC 113 but English ones (statistic_yyy, site_id, mother_age, birth_count) for 108-112 and 114, while the values themselves are identical in both. Mother's age labels are parsed into integer intervals: plain single ages become (n, n), while the open-ended bands 未滿15歲 and N歲以上 become (None, n-1) and (n, None) so that yearly totals still reconcile; any label that cannot be parsed raises rather than being dropped. The gender column is fixed to female because the age subject is the mother; the baby's gender is a separate dimension kept in breakdown. District codes match youth_pop_single_age and youth_traffic_fatal_ntpc so the three tables join directly. A reconciliation check asserts the aggregated birth totals equal the input totals.",
+    "sensitivity": "public"
+  }
+}

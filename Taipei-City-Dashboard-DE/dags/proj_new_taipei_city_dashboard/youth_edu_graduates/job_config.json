@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_edu_graduates",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 19 15 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "教育",
+      "畢業生",
+      "大專校院",
+      "教育部統計處",
+      "全國",
+      "新北市"
+    ],
+    "description": "College and university graduate counts by school, level, day/continuing division, education system, county and gender, from MOE Department of Statistics. Covers academic years 103-114 (graduation years 102-113). Column names drifted three times across those years, so columns are matched by role rather than by literal name.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 60
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_edu_graduates",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "大專校院校別畢業生數（含縣市、學制、性別）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://stats.moe.gov.tw/files/detail/{academic_year}/{academic_year}_graduate.csv",
+    "source_type": "教育部統計處 檔案下載",
+    "source_dept": "教育部統計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "教育部統計處逐學年度發布之大專校院校別畢業生數，含學校代碼與名稱、日間∕進修別、等級別（博士/碩士/學士/四技/二技/二專/五專等）、縣市、體系別（一般/技職/師範）及男女人數。實測103至114學年度共12個檔案皆可免驗證下載。此資料為命題「教育程度與起薪水準」交叉比對的教育端，亦為缺工預測的人力供給端。新北市畢業生數自102學年度34,216人降至113學年度26,698人，12年減少22%。",
+    "etl_description": "Download one CSV per academic year from MOE statistics, probing forward until two consecutive 404s so newly published years are picked up automatically. Columns are matched by role, not by name: the same table changed its column names three times across 103-114 (day/continuing division switched from an underscore to a fullwidth division slash at 107; the gender columns were renamed to 男生/女生 for 110-111 only; the 學年度 column is absent in 103-106, 108, 110 and 111). Code prefixes are stripped from coded label fields ('B 學士' and 'B學士' both become 學士) and the raw code is kept separately as level_code, because label text drifts across years while the code does not. County is mapped by NAME to the standard administrative code, since the source still uses pre-merger county codes in which Taichung, Tainan and Kaohsiung each appear under two different codes. The graduate figure is labelled 上學年畢業生, so the actual graduation academic year is the file year minus one; period_start/period_end follow the graduation year and the file year is preserved in breakdown.source_academic_year. Age columns are deliberately left null: the source carries academic level but no age, and inferring age from level would be an assumption, not a fact.",
+    "sensitivity": "public"
+  }
+}

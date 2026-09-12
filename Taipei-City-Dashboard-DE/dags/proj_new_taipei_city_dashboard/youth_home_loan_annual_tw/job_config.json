@@ -1,0 +1,43 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_home_loan_annual_tw",
+    "start_date": "2026-09-01",
+    "schedule_interval": "17 4 15 2 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "居住",
+      "青年安心成家貸款",
+      "政策觸及",
+      "全國"
+    ],
+    "description": "Annual nationwide counts and amounts of the Youth Home Loan by public bank. The source is a policy-program aggregate without borrower ages, so it is not an 18-35 count.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_home_loan_annual_tw",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "青年安心成家貸款分年觸及資料（全國）",
+    "airflow_update_freq": "每年",
+    "source": "https://data.gov.tw/dataset/41223",
+    "source_type": "data.gov.tw 伺服器渲染目錄頁解析國庫署 CSV",
+    "source_dept": "財政部國庫署",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "國庫署青年安心成家貸款分年統計，按 8 家公股銀行提供本年受理／撥貸戶數及金額。來源沒有縣市與借款人年齡，因此 area_code=TW、area_level=nation，不能直接當新北市或命題 18-35 人數。",
+    "etl_description": "每次先抓資料集 41223 的目錄頁，以 contentUrl/href 角色解析目前 CSV，再以瀏覽器 User-Agent 下載。欄位依角色 token 對應並嚴格解析千分位數字；民國年轉西元。輸出本年受理與撥貸的戶數（count）及總金額（sum，來源單位新臺幣億元）。以每個指標逐列對帳，並以受理／撥貸戶數做年度三倍尺度守門；民國 100 年起始轉換列明確排除。",
+    "sensitivity": "public"
+  }
+}

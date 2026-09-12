@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_volunteer_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 18 12 3,9 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "社會參與",
+      "志工",
+      "年齡別",
+      "data.ntpc.gov.tw"
+    ],
+    "description": "New Taipei City Social Affairs Bureau volunteer headcount by age band and gender, plus community development association chairperson counts, annual since 2006. Source columns are semantically empty (field1 / percent2 ... percent17); the mapping is reconciled arithmetically against the source's own totals on every run.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 60
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_volunteer_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市社會局所轄志工（含年齡別）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://data.ntpc.gov.tw/api/datasets/06f26ed3-13e0-4650-b767-fb91d665ceff/json",
+    "source_type": "data.ntpc.gov.tw",
+    "source_dept": "新北市政府主計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "新北市政府社會局所轄志工人數，按年齡組（未滿12歲、12-17歲、18-29歲、30-49歲、50-64歲、65歲以上）及性別統計，逐年自2006年起。同一份來源另含社區發展協會理事長人數（男女別，無年齡）。本資料是新北市少數同時具備年齡別與長時間序列的青年社會參與指標，可用於觀察青年投入志願服務的長期趨勢。惟其年齡分組為18-29與30-49，35歲的切點落在30-49組中間，換算至命題指定的18-35歲範圍時需以單齡人口做組內分攤，屬apportioned而非exact。",
+    "etl_description": "Fetch all pages from the New Taipei open data JSON API; source columns carry no semantics (field1 = year, percent2-percent17 = paired male/female counts). Map columns using the dataset page's field description, with percent16/percent17 inferred as the 65-and-over band and confirmed by reconciling every age-band sum against the source's own total columns (38/38 year-gender pairs matched). Emit long-format rows in the shared youth_fact contract: one row per year x age band x gender, plus source-provided totals and the age-less chairperson indicator. Age bands are stored as integer intervals, never as label strings.",
+    "sensitivity": "public"
+  }
+}

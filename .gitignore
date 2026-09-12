@@ -72,8 +72,6 @@ Taipei-City-Dashboard-DE/docker/prod/.env
 **/__pycache__/
 *.py[cod]
 
+**/.claude/settings.local.json
+
 *.env
-# codegraph 的本機索引（21MB SQLite），不應進版控
-.codegraph/
-# 官方 API 回應快取（prewarm.mjs 產生，可重新抓取，不應進版控）
-**/local-demo/cache/

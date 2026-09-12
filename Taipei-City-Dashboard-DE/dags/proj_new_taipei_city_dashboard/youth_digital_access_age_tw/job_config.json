@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_digital_access_age_tw",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 10 7 *",
+    "catchup": false,
+    "tags": ["youth", "digital", "internet", "New-Taipei-City"],
+    "description": "Taiwan annual digital access survey rates by age, plus the New Taipei total internet-use rate.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_digital_access_age_tw",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "數位發展調查年齡別網路與電腦使用率",
+    "airflow_update_freq": "annual",
+    "source": "https://data.gov.tw/dataset/5960",
+    "source_type": "MODA open CSV",
+    "source_dept": "數位發展部",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "Annual digital access survey rates by source-defined age bands, with New Taipei's total personal internet-use rate.",
+    "etl_description": "Download the official CP950 CSV with a browser User-Agent, resolve columns by semantic header roles, parse source age-band changes by ROC year, and reconcile every numeric source cell that is emitted. Rates are never population-scaled into an 18-35 estimate.",
+    "sensitivity": "public"
+  }
+}

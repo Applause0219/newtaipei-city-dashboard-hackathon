@@ -162,26 +162,9 @@ export const useChatStore = defineStore('chat', () => {
 		if (recommendComponents.value && recommendComponents.value?.length > 0) {
 			topK = [...recommendComponents.value].sort((a, b) => b.score - a.score);
 			chatData.value.push({ id: chatData.value.length + 1, role: 'bot', isDefault: false, button: [{ id:1, text:'建立儀表板' }], content: `您好 😊 \n 以下是根據您的問題，自動為您推薦的「組件清單」。您可以將這些組件整批加入「個人儀表板」，方便日後快速查看與使用。\n`, relations: topK });
-
-			// 向量檢索「一定會」回傳結果，即使問題與資料完全無關——
-			// 實測：問「香蕉的價格波動與月球引力的關聯」仍回傳 10 個組件，
-			// 分數 0.843~0.848，全部高於 0.8 門檻。所以推薦清單不代表真的合適。
-			// 因此不論有沒有推薦，都一併提供「照您的問題現做一個」的選項。
-			chatData.value.push({
-				id: chatData.value.length + 1, role: 'bot', isDefault: false,
-				content: `如果上面的組件都不是您要的，我也可以直接照您的問題做一個新組件 👇`,
-				button: [{ id: 1, text: '幫我建立組件' }],
-				question: newChatData.content,
-			});
+			chatData.value.push({ id: chatData.value.length + 1, role: 'bot', isDefault: false, content: `若您有任何新的查詢或想深入探索的內容，都可以隨時在對話框告訴我～\n 我很樂意再協助您 💬✨` });
 		} else {
-			// 原本這裡是死路：找不到相似組件就只能請使用者重問。
-			// 現在改成提議即時生成一個——資料目錄裡有的東西，就做得出來。
-			chatData.value.push({
-				id: chatData.value.length + 1, role: 'bot', isDefault: false,
-				content: `現有的組件裡沒有夠接近的 🤔\n\n不過如果這個問題在資料目錄涵蓋的範圍內，我可以直接幫您做一個新組件。`,
-				button: [{ id: 1, text: '幫我建立組件' }],
-				question: newChatData.content,
-			});
+			chatData.value.push({ id: chatData.value.length + 1, role: 'bot', isDefault: false, content: `很抱歉，您提供的描述沒有相似組件，請繼續提問 ! ` });
 		}
 
 		// 分析結束後紀錄問答log

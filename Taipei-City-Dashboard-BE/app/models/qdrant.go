@@ -1,7 +1,6 @@
 package models
 
 import (
-	"os"
 	"TaipeiCityDashboardBE/global"
 	"bytes"
 	"encoding/json"
@@ -97,21 +96,10 @@ func InitLmSession() *ort.DynamicSession[int64, float32] {
 	LMConfig := global.LM
 
 	// 1) ONNX Runtime 初始化
-	// 本機開發用：路徑原本寫死為 Linux 的 /usr/lib/libonnxruntime.so，
-	// macOS 上是 .dylib 且 /usr/lib 受 SIP 保護無法寫入，後端因此必定啟動失敗
-	// （log.Fatalf）。改為可用 ONNXRUNTIME_LIB_PATH 覆寫，預設值不變。
-	ortLib := os.Getenv("ONNXRUNTIME_LIB_PATH")
-	if ortLib == "" {
-		ortLib = "/usr/lib/libonnxruntime.so"
-	}
-	ort.SetSharedLibraryPath(ortLib) // 設定共享函式庫路徑
+	ort.SetSharedLibraryPath("/usr/lib/libonnxruntime.so") // 設定共享函式庫路徑
 
 	if err := ort.InitializeEnvironment(); err != nil {
-		// 本機開發：缺 ONNX 函式庫時只警告，不要殺掉整個後端。
-		// 影響範圍僅 POST /component/component（向量檢索），
-		// GenVector 已有 nil 檢查會回錯誤。等時圈服務也是同樣做法。
-		log.Printf("[warn] InitializeEnvironment error: %v (向量檢索停用)", err)
-		return nil
+		log.Fatalf("InitializeEnvironment error: %v", err)
 	}
 
 	// 2) 模型路徑
@@ -139,9 +127,7 @@ func InitLmSession() *ort.DynamicSession[int64, float32] {
 
 	session, err := ort.NewDynamicSession[int64, float32](modelPath, inputNames, outputNames)
 	if err != nil {
-		// 同上：缺 e5 模型檔時停用向量檢索即可，不必讓後端起不來
-		log.Printf("[warn] NewDynamicSession error: %v (向量檢索停用)", err)
-		return nil
+		log.Fatalf("NewDynamicSession error: %v", err)
 	}
 
 	return session
@@ -152,10 +138,8 @@ func InitTokenizer() *tokenizer.Tokenizer {
     tokenizerPath := filepath.Join(modelDir, "tokenizer.json")
 	tk, err := pretrained.FromFile(tokenizerPath)
     if err != nil {
-        // 本機開發：GenVector 已檢查 global.LMTokenizer == nil 並回傳錯誤，
-        // 所以這裡回 nil 是安全的，不需要讓整個後端啟動失敗
-        log.Printf("[warn] Failed to load tokenizer: %v (向量檢索停用)", err)
-        return nil
+        // 啟動時失敗就報警並停止，這比執行中當機好找原因
+        log.Fatalf("Critical: Failed to load tokenizer: %v", err)
     }
     return tk
 }

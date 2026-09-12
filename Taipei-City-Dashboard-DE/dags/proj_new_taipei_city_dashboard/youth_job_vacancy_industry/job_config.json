@@ -1,0 +1,44 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_job_vacancy_industry",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 0 15 * *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "青年",
+      "職缺",
+      "行業",
+      "主計總處",
+      "全國"
+    ],
+    "description": "Taiwan historical job-vacancy counts by industry. The source has no age field, so 18-35 is unavailable and no age is inferred.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_job_vacancy_industry",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "歷年各業廠商職缺數",
+    "airflow_update_freq": "monthly",
+    "source": "https://data.gov.tw/dataset/9857",
+    "source_type": "行政院主計總處資料開放 XML",
+    "source_dept": "行政院主計總處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "全國歷年各行業職缺個數，來源期間為 1997-02 至 2024-11。",
+    "etl_description": "Fetch mp05005.xml with a browser User-Agent, resolve the 20 industry roles by semantic aliases, parse western YYYYMM periods and integer counts, preserve source dashes as missing rather than zero, check industrial/service hierarchy reconciliation, and reconcile every numeric source cell to an emitted fact. The source has no age dimension.",
+    "sensitivity": "public"
+  }
+}

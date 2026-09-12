@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_suicide_death_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 23 20 4,10 *",
+    "catchup": false,
+    "tags": ["youth", "健康", "自殺", "死亡", "五齡", "新北市"],
+    "description": "新北市自殺死亡數，按年度、性別與官方五齡／單齡年齡代碼輸出。18-35 需在查詢端對 15-19 與 35-39 邊界組 apportioned；ETL 不固化青年數。",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_suicide_death_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市自殺死亡數（按官方五齡與性別）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://www.mohw.gov.tw/dl-83420-8ac74f07-080f-4b94-8453-ce2a8ee99f8b.html",
+    "source_type": "衛生福利部死因統計（138分類）－縣市五齡",
+    "source_dept": "衛生福利部統計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "讀取衛福部縣市五齡死因 ZIP 的官方 age_code、cause 與 sex 對照表，篩縣市代碼 31（新北市）及 cause 131（蓄意自我傷害／自殺），涵蓋民國97至114年。",
+    "etl_description": "每次以瀏覽器 User-Agent 下載 ZIP，從 ZIP 內官方 XLSX 對照表驗證 age_code 與 cause 131 語意，再以角色別別名讀取 CSV。民國年轉西元；五齡、單齡、新生兒／嬰兒及不詳標籤都明確處理，無法解析就 raise。只輸出原始年齡組，並按年度做輸入／輸出死亡數對帳及三倍中位數尺度防護。",
+    "sensitivity": "public"
+  }
+}

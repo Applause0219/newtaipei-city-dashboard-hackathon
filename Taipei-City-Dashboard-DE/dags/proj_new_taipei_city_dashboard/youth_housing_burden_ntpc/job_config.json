@@ -1,0 +1,44 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_housing_burden_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 6 1 1,4,7,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "居住",
+      "房貸負擔率",
+      "房價所得比"
+    ],
+    "description": "Quarterly New Taipei mortgage burden rate and price-to-income ratio from the official PIP attachment. The latest attachment is a current-quarter snapshot and has no youth age field.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_housing_burden_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市房貸負擔率與房價所得比",
+    "airflow_update_freq": "quarterly",
+    "source": "https://pip.moi.gov.tw/V3/E/SCRE0105.aspx",
+    "source_type": "內政部不動產資訊平台版本頁解析官方 PDF 附件",
+    "source_dept": "內政部國土管理署",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "內政部不動產資訊平台房價負擔能力官方附件；本 DAG 只保留新北市，輸出房貸負擔率與房價所得比兩個季度指標。兩者是中位數家戶／城市統計，不是青年個人微資料。",
+    "etl_description": "每次先讀 PIP V3 房價負擔版本頁（不同於已知 E1050 前端查詢死路），依檔名民國年／季度解析最新官方 PDF，再以瀏覽器 User-Agent 下載。DAG 用 shutil.which 檢查 pdftotext，將 PDF 第一頁官方六都說明中的新北市第 1 筆解析為房貸負擔率與房價所得比；報告期別、數值格式、版面 pattern 改變時直接 raise。房貸負擔率是 rate，房價所得比是 index，不依人口比例縮放成 18-35。以 source_row_count 對帳兩個輸出指標；每年度按其餘年度中位數執行三倍尺度防護，KNOWN_BAD_YEARS 目前為空。",
+    "sensitivity": "public"
+  }
+}

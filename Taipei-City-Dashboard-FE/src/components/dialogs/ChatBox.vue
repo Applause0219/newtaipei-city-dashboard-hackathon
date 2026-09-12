@@ -23,92 +23,8 @@ const userMessage = ref("");
 const chatAreaRef = ref(null);
 const isStickyOpen = ref(false);
 const dashboardCreationLoading = ref(false);
-const componentGenLoading = ref(false);
 
-const qaBtnHandler = async (text, relations, chat) => {
-	// 向量檢索找不到現成組件時，改用資料目錄即時生成一個。
-	// 模型只挑表挑欄位（ComponentSpec），SQL 由程式編譯、數值由資料庫算，
-	// 所以這裡拿到的每個數字都來自真實查詢，不是模型寫出來的。
-	if (text === "幫我建立組件") {
-		if (componentGenLoading.value) return;
-		componentGenLoading.value = true;
-		addChatData({ role: "bot", content: "正在從資料目錄挑選欄位並產生查詢…" });
-		try {
-			const res = await http.post(
-				"/component/generate",
-				{ question: chat?.question || "" },
-				{ headers: { "Content-Type": "application/json" } },
-			);
-			const r = res.data?.data || {};
-
-			if (!r.ok) {
-				addChatData({
-					role: "bot",
-					content: `目前做不出來：${(r.errors || ["未知原因"])[0]}`,
-				});
-			} else if (r.chartable === false) {
-				// 資料太少不值得畫圖，但不代表沒答案——直接給數字
-				const lines = r.facts.slice(0, 10)
-					.map((f) => `• ${f.label}：${f.value}${f.unit}`).join("\n");
-				addChatData({
-					role: "bot",
-					content: `這個問題的資料量不適合畫成圖（${r.reasons.join("、")}），直接給您數字：\n\n${lines}`,
-				});
-			} else {
-				const s = r.spec;
-				const added = mountGenerated(r);
-
-				// 官方已經有同一批資料做的組件嗎？有就先講清楚差在哪個視角，
-				// 不要讓使用者以為我們憑空多做了一個重複的東西。
-				const rel = r.related || {};
-				let relText = "";
-				if (rel.known === false) {
-					relText = "\n\n（目前連不上官方組件清單，無法確認是否已有類似組件）";
-				} else if (rel.items?.length) {
-					const dup = rel.items.filter((x) => x.duplicate);
-					relText = "\n\n📎 同一批資料，官方已經有這些組件：\n" +
-						rel.items.map((x) => {
-							const cut = x.their_series?.length
-								? `：${x.their_series.join("、")}`
-								: "";
-							return `• ${x.name}（${x.view}${cut}）`;
-						}).join("\n");
-
-					if (dup.length) {
-						relText += `\n\n⚠ 「${dup[0].name}」與這次生成的視角相同，` +
-							`而且都包含「${(dup[0].overlap || []).join("、")}」，可能重複。`;
-					} else {
-						relText += `\n\n這次生成的是「${VIEW_LABEL[s.query_type] || s.query_type}」，` +
-							`切分方式是「${s.series.map((x) => x.label).join("、")}」——` +
-							`與上面各組件的切面都不同，補足了既有組件沒涵蓋的角度。`;
-					}
-				}
-
-				addChatData({
-					role: "bot",
-					content:
-						`已產生組件「${s.name}」 ✨\n\n` +
-						`• 資料來源：${s.table}\n` +
-						`• 圖表：${s.chart.types.join(" / ")}\n` +
-						`• 結果：${r.stats.categories} 個分類 × ${r.stats.series} 個數列\n` +
-						`• 產生方式：${r.model}\n\n` +
-						`${s.long_desc}` +
-						relText +
-						"\n\n" +
-						(added
-							? `已加到左側儀表板最上方，可直接切換圖表類型查看 👈\n重新整理頁面就會移除。`
-							: `（無法加到目前的儀表板：這個組件屬於 ${s.city}，與目前檢視的城市不同）`),
-					generated: r,
-				});
-			}
-		} catch (err) {
-			console.error("component generate error:", err);
-			addChatData({ role: "bot", content: "產生組件時發生錯誤，請稍後再試。" });
-		}
-		componentGenLoading.value = false;
-		return;
-	}
-
+const qaBtnHandler = async (text, relations) => {
 	if (text === "建立儀表板") {
 		if (dashboardCreationLoading.value === true) return;
 		dashboardCreationLoading.value = true;
@@ -145,74 +61,6 @@ const qaBtnHandler = async (text, relations, chat) => {
 		dashboardCreationLoading.value = false;
 	}
 };
-
-// 把剛產生的組件掛到目前的儀表板上。
-//
-// 官方渲染組件只看兩個東西：config.chart_data（數列）與
-// chart_config.categories（分類）——contentStore.js:328-336 就是這樣填的。
-// 我們的產生器輸出的格式跟後端編譯出來的一模一樣，所以直接組一個
-// 組件物件推進去就會畫出來，不需要先寫進資料庫。
-//
-// 只存在記憶體，重新整理就沒了。要永久保留得走 db/ 那條路。
-// query_type 說人話。跟 official.js 的 VIEW 對照表一致。
-const VIEW_LABEL = {
-	time: "時間趨勢",
-	two_d: "分項比較",
-	three_d: "分項比較（多數列）",
-	percent: "占比",
-};
-
-const PALETTE = ["#5a9cf8", "#56B96D", "#F8CF58", "#F5AD4A", "#E170A6", "#ED6A45", "#AF4137", "#10294A"];
-let genSeq = 0;
-
-function mountGenerated(r) {
-	const s = r.spec;
-	const cur = contentStore.currentDashboard;
-	const city = contentStore.cityDashboard;
-	if (!cur || !city || !Array.isArray(city.components)) return false;
-
-	// 官方會依 city 過濾組件（contentStore.js:685-695），
-	// 城市對不上就算推進去也不會顯示，不如誠實說做不到
-	if (cur.city && s.city !== cur.city) return false;
-
-	// 要推進 cityDashboard 而不是 currentDashboard：
-	// 儀表板有定期自動更新，updateCurrentDashboardAllChartData 結束時會呼叫
-	// filterCurrentDashboardContent()，那個函式是「從 cityDashboard.components
-	// 重建 currentDashboard.components」。只推後者的話，下一次更新就被洗掉。
-	const id = 90001 + genSeq++;
-	city.components.unshift({
-		id,
-		index: s.index,
-		name: s.name,
-		city: s.city,
-		query_type: s.query_type,
-		source: `自動生成 · ${r.model}`,
-		short_desc: s.short_desc || "",
-		long_desc: s.long_desc || "",
-		use_case: "",
-		links: [],
-		contributors: [],
-		history_config: null,
-		map_config: [null],
-		map_filter: null,
-		time_from: "static",
-		time_to: null,
-		update_freq: null,
-		update_freq_unit: null,
-		updated_at: new Date().toISOString(),
-		chart_config: {
-			index: s.index,
-			color: PALETTE.slice(0, Math.max(r.chart.data.length, 1)),
-			types: s.chart.types,
-			unit: s.chart.unit || "",
-			// two_d 沒有 categories，圖表元件也不會去讀它
-			...(r.chart.categories ? { categories: r.chart.categories } : {}),
-		},
-		chart_data: r.chart.data,
-	});
-	contentStore.filterCurrentDashboardContent();
-	return true;
-}
 
 const sendBtnHandler = (text) => {
 	if (!text.trim()) return;
@@ -352,7 +200,7 @@ watch(
               <button
                 v-for="btn in chat.button"
                 :key="btn.id"
-                @click="qaBtnHandler(btn.text, chat.relations, chat)"
+                @click="qaBtnHandler(btn.text, chat.relations)"
               >
                 {{ btn.text }}
               </button>

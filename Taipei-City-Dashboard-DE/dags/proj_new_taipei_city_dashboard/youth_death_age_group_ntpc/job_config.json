@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_death_age_group_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 17 4,10 *",
+    "catchup": false,
+    "tags": ["youth", "新北市", "New-Taipei-City", "死亡", "年齡組", "性別"],
+    "description": "New Taipei City deaths by source age group and gender from the NTPC open-data gender statistics series. The 15-24 and 25-44 bands cross the 18-35 boundary, so the source is apportioned at query time; raw groups are never split in ETL.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_death_age_group_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市死亡人數（按年齡組、性別）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://data.ntpc.gov.tw/datasets/0a5a1e6e-8c91-4c74-b23e-117537180618",
+    "source_type": "新北市資料開放平臺 API",
+    "source_dept": "新北市政府主計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "新北市死亡人數按年齡組與性別的年度資料。實測有效年度為2006–2023，API另回傳一列全空列；來源同時列出0歲新生兒細分、死亡年齡平均數與中位數；本DAG只取不重複的死亡年齡組計數，將0歲新生兒細分保留在來源說明而不重複加總。",
+    "etl_description": "Fetch the JSON array with a browser User-Agent, resolve field1 and item value2-item value17 by semantic role aliases, exclude the duplicated newborn subfields item value4-item value5 and mean/median fields, parse every emitted age label into integer bounds, and reconcile every year/gender input cell to the output. A three-times-median annual scale guard fails loud on unknown scope changes. The 15-24 and 25-44 bands are retained as-is; no 18-35 estimate is materialized.",
+    "sensitivity": "public"
+  }
+}

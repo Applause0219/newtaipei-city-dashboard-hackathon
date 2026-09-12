@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_card_consumption_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 2 5 * *",
+    "catchup": false,
+    "tags": ["youth", "新北市", "New-Taipei-City", "消費", "信用卡", "年齡"],
+    "description": "New Taipei City cardholder consumption by age band and industry from NCCC dataset 38319. This is a card-spending proxy, not total youth consumption or income.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_card_consumption_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市各年齡層持卡人消費樣態（聯卡中心）",
+    "airflow_update_freq": "monthly",
+    "source": "https://data.gov.tw/dataset/38319",
+    "source_type": "聯合信用卡處理中心 NCCC CSV（data.gov.tw 資料集38319）",
+    "source_dept": "聯合信用卡處理中心",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "統計2014年起六都及其他地區各年齡層持卡人，依信用卡產業別提供交易筆數與交易金額。DAG只保留新北市65000000，將來源年齡層轉為可運算的含括區間，並輸出筆數與金額兩個指標。",
+    "etl_description": "下載NCCC官方UTF-8 CSV，驗證欄位與新北市代碼65000000；將年月轉為月份期間，解析未滿20、20-25、25-30、30-35、35-40及80歲以上等年齡標籤；保留產業別與來源年齡標籤於breakdown，對交易筆數和金額做非負數檢核。這是持卡消費proxy，缺18-19歲且不可解讀為全體青年消費。",
+    "sensitivity": "public"
+  }
+}

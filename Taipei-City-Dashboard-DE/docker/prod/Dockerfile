@@ -3,6 +3,7 @@ USER root
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
          gdal-bin libgdal-dev build-essential \
+         poppler-utils \
 		 vim curl wget \
   && apt-get autoremove -yqq --purge \
   && apt-get clean \

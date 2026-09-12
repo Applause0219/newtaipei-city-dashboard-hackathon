@@ -49,7 +49,7 @@ x-airflow-common:
   # In order to add custom dependencies or upgrade provider packages you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.5}
+  image: "${AIRFLOW_IMAGE_NAME:-taipei-city-dashboard-airflow:2.10.5}"
   build: .
   environment:
     &airflow-common-env
@@ -57,11 +57,12 @@ x-airflow-common:
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${MATADATA_DATABASE}
     AIRFLOW__CELERY__RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
     AIRFLOW__CELERY__BROKER_URL: ${REDIS_CONN}
-    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__FERNET_KEY: "${AIRFLOW_FERNET_KEY:-}"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
-    AIRFLOW__WEBSERVER__BASE_URL: 'https://test-citydashboard.taipei/airflow-prod'
+    AIRFLOW__CORE__DAG_IGNORE_FILE_SYNTAX: glob
+    AIRFLOW__WEBSERVER__BASE_URL: "${AIRFLOW_WEBSERVER_BASE_URL:-http://localhost:8080}"
     AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: "True"
     # Reduce DAG parsing CPU pressure
     AIRFLOW__SCHEDULER__PARSING_PROCESSES: 2
@@ -120,9 +121,9 @@ services:
     cpus: "0.5"
     mem_limit: "2g"
     ports:
-      - "8080:8080"
+      - "${AIRFLOW_WEBSERVER_PORT:-8080}:8080"
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/airflow-prod/health"]
+      test: ["CMD", "curl", "--fail", "http://localhost:8080${AIRFLOW_HEALTHCHECK_PATH:-/health}"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -298,8 +299,8 @@ services:
       <<: *airflow-common-env
       _AIRFLOW_DB_MIGRATE: 'true'
       _AIRFLOW_WWW_USER_CREATE: 'true'
-      _AIRFLOW_WWW_USER_USERNAME: ${USERNAME}
-      _AIRFLOW_WWW_USER_PASSWORD: ${PASSWORD}
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
       _PIP_ADDITIONAL_REQUIREMENTS: ''
     user: "0:0"
     volumes:

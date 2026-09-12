@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_mental_health_antidepressant_tw",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 15 7 *",
+    "catchup": false,
+    "tags": ["youth", "mental-health", "NHI", "age"],
+    "description": "NHI annual antidepressant medication-user counts by age nationwide and total New Taipei counts where published.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_mental_health_antidepressant_tw",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "健保抗憂鬱藥物使用人數年齡結構",
+    "airflow_update_freq": "annual",
+    "source": "https://info.nhi.gov.tw/api/iode0000s01/Dataset?rId=A21030000I-L50007-001",
+    "source_type": "NHI open CSV API",
+    "source_dept": "衛生福利部中央健康保險署",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "Annual antidepressant medication-user counts by age group, with a regional New Taipei total series available from ROC 101.",
+    "etl_description": "Resolve columns by semantic role, parse source age labels into integer intervals, reconcile national total to the five age groups and reconcile New Taipei values when available. This is an administrative medication-use proxy, not a counselling or community mental-health-center service count.",
+    "sensitivity": "public"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_crime_suspect_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 16 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "犯罪",
+      "犯罪嫌疑犯",
+      "年齡",
+      "性別"
+    ],
+    "description": "New Taipei City criminal suspect counts by source age band, crime item and suspect gender, from the New Taipei open-data API. The 18-35 result is apportioned because the source 30-39 band crosses age 35; no rate scaling is performed.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_crime_suspect_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市犯罪嫌疑犯人數（按年齡、罪名、性別）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://data.ntpc.gov.tw/api/datasets/2fdff679-af9c-46ab-bd2b-4555d24163c6/json?page=0&size=5000",
+    "source_type": "新北市資料開放平臺 API",
+    "source_dept": "新北市政府警察局",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "新北市犯罪嫌疑犯統計，原始欄位為民國年、年齡組、罪名、總計、men person、female person。本DAG保留所有原始年齡／罪名層級，並把全罪名總計、罪名階層總計、年齡不詳及全年齡列分成獨立 indicator_id，避免下游把合計與明細重複相加。行政區粒度不存在，統一為新北市全市 area_code=65000。",
+    "etl_description": "Paginate the data.ntpc API from page 0 until an empty page, using a browser User-Agent. Parse age labels into integer bounds; 70歲以上 has an open upper bound, 年齡不詳 and 總計 retain the raw label but have null bounds, and every unknown label raises. Parse comma-formatted counts, preserve the source total/male/female values, and reconcile the emitted gender=total sum to the input total; known source rows where total differs from male plus female are reported without inventing a correction. Emit male, female and total rows. Source crime items contain hierarchical labels ending in 總計, so item summary rows are emitted under separate indicators instead of being mixed with crime-detail rows. The source is a count, not a rate; 18-35 is apportioned only at query time because 30-39 crosses the upper boundary.",
+    "sensitivity": "public"
+  }
+}

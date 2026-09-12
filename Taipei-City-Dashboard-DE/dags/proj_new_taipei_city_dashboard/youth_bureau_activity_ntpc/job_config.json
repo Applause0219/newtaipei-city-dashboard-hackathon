@@ -1,0 +1,47 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_bureau_activity_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 22 20 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "青年局",
+      "PDF",
+      "活動參與",
+      "職涯",
+      "創業",
+      "國際交流"
+    ],
+    "description": "New Taipei City Youth Bureau annual-report activity participation facts from official PDFs. The reports contain annual activity, participant gender and identity counts, but no participant age; every age field is therefore null and 18-35 coverage is unavailable rather than inferred.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_bureau_activity_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市政府青年局統計年報活動參與",
+    "airflow_update_freq": "twice a year",
+    "source": "https://www.youth.ntpc.gov.tw/youth/ch/app/folder/50",
+    "source_type": "新北市政府青年局官方統計年報 PDF",
+    "source_dept": "新北市政府青年局",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "自青年局統計專區下載111至114年度統計年報，解析表1「青年國際交流」、表2「青年職涯發展活動」及表3「青年創新創業活動」的活動／身分別、活動場次、參加人次與男女別。輸出區域為新北市全市65000。年報活動參與表沒有服務對象年齡欄，不能由「青年」字樣推估18至35歲，故age_lower、age_upper、age_band_raw均為NULL，18-35判定為unavailable。",
+    "etl_description": "Fetch each official PDF with a browser User-Agent, require a PDF response, convert it with Poppler pdftotext -layout -enc UTF-8, then locate rows by semantic activity or identity labels. Numeric parsing removes thousands separators and tolerates PDF row wrapping. Participant totals must equal male plus female, and each total row must equal the sum of its category rows; any missing label, malformed row or reconciliation mismatch raises. Activity-session facts are emitted only when the source supplies a numeric session count; source '-' is not converted to zero.",
+    "sensitivity": "public"
+  }
+}
