@@ -104,7 +104,7 @@ await call("query_indicator", {
 const last = trace[trace.length - 1];
 const shown = Object.values(last?.args || {}).join("｜");
 ok("trace 要看得到年齡條件", /15-29/.test(shown), shown);
-ok("trace 要看得到性別條件", /gender=/.test(shown), shown);
+ok("trace 要看得到性別條件", /性別=/.test(shown), shown);
 ok("trace 要看得到地理層級", /district/.test(shown), shown);
 
 // ────────────────────────────────────────────────────────────

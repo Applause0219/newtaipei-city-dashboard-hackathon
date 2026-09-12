@@ -125,123 +125,295 @@ export function buildTools(catalog, onCall = () => {}) {
 				rows[0].warning = "這個 indicator_id 在多個資料集裡都有，"
 					+ "建立組件時必須同時篩 dataset_id，否則會把不同資料集的數字加在一起。";
 			}
+			// 沒有 district 不等於「這個主題沒有分區資料」。
+			// 實測：問「所得高的區結婚是不是也多」，模型 inspect 了只有 city 的
+			// resident_marital_status_count，就宣布無法分區比較——
+			// 而 marriage_count 有 district，26134 列，它從頭到尾沒搜過。
+			if (!/district/.test(rows[0].area_levels || "")) {
+				rows[0].before_you_say_no =
+					"這個指標沒有 district 層級。宣告「沒有分區資料」之前，"
+					+ "必須先用中文關鍵字呼叫 search_indicators 至少一次——"
+					+ "同一個主題往往有另一個指標是有分區的。";
+			}
 			note("inspect_indicator", { indicator_id: ind },
 				`${rows[0].area_levels}｜${rows[0].rows} 列`);
 			return result(rows.length === 1 ? rows[0] : rows, {});
 		},
 	};
 
-	// ── 3. 直接取數字（不建組件，只是看看） ──
+	// ── 3. 共用的「要看哪批數字」解析器 ──
 	//
-	// 這個工具跟 build_component 讀同一張長表，但原本一道守門都沒有——
-	// 於是 agent 寫在**文字裡**的數字，可以違反圖表數字必須遵守的每一條規則。
-	//
-	// 2026-09-12 實測：population_count 同時存在於 2 個資料集、2 個地理層級、
-	// 3 種性別值。全部不篩就一起加，分母算出 32,376,008（新北市實際約 400 萬），
-	// 青年人口佔比報成 11.7%，真值 15.0%。
-	// validateSpec 擋得下來的錯，文字照樣講得出口——所以守門要放在這裡，不是只放在圖表那條路。
+	// query / correlate / compare 三個工具走同一套守門。
+	// 分開寫的話，只要有一條路徑漏掉守門，錯的數字就會從那裡流進文字答案——
+	// 這正是 2026-09-12 那次 population_count 分母灌水 8 倍的成因。
+	async function resolveSelector(sel, { forDistrict = false } = {}) {
+		const ind = String(sel?.indicator_id ?? "");
+		if (!ind) return { error: "要指定 indicator_id" };
+
+		const shape = (await query(`
+			SELECT string_agg(DISTINCT dataset_id, ',' ORDER BY dataset_id) AS datasets,
+			       string_agg(DISTINCT area_level, ',' ORDER BY area_level) AS levels,
+			       string_agg(DISTINCT gender, ',' ORDER BY gender)         AS genders
+			FROM public.youth_fact_named WHERE indicator_id = ${lit(ind)}`))[0];
+		if (!shape?.datasets) {
+			return { error: `查無指標 ${ind}`, hint: "先用 search_indicators 確認代號" };
+		}
+		const datasets = shape.datasets.split(",");
+		const levels = shape.levels.split(",");
+		const genders = (shape.genders || "").split(",").filter(Boolean);
+
+		// 「這個指標根本沒有分區資料」要比「該挑哪個資料集」更早講。
+		// 不論挑哪個資料集都補不出 district，先講 dataset_id 只會讓模型多繞一圈，
+		// 繞完還是撞牆，然後宣布「沒有分區資料」——那個結論常常是錯的。
+		if (forDistrict && !levels.includes("district")) {
+			return {
+				error: `${ind} 沒有 district 層級，做不了分區比較`,
+				area_levels: levels,
+				hint: "宣告「無法分區比較」之前，先用中文關鍵字再 search_indicators 一次"
+					+ "——同一個主題常常有另一個指標是有分區的",
+			};
+		}
+
+		const ds = sel?.dataset_id ? String(sel.dataset_id)
+			: (datasets.length === 1 ? datasets[0] : null);
+		if (!ds) {
+			return { error: `${ind} 同時存在於 ${datasets.length} 個資料集，不指定會把不同母體加在一起`,
+				datasets, hint: "挑一個 dataset_id 再查一次" };
+		}
+		if (!datasets.includes(ds)) return { error: `${ind} 不在資料集 ${ds} 裡`, datasets };
+
+		const lv = forDistrict ? "district"
+			: (sel?.area_level ? String(sel.area_level)
+				: (levels.includes("district") ? "district" : levels[0]));
+		if (!levels.includes(lv)) {
+			return { error: `${ind} 沒有 ${lv} 層級` + (forDistrict ? "，做不了分區比較" : ""),
+				area_levels: levels,
+				hint: forDistrict ? "宣告「無法分區比較」之前，先用中文關鍵字再 search_indicators 一次——同一個主題常常有另一個指標是有分區的" : undefined };
+		}
+
+		let g = sel?.gender ? String(sel.gender) : null;
+		if (g && !genders.includes(g)) {
+			return { error: `${ind} 沒有 gender=${g} 這個值，硬篩會得到空結果`, genders };
+		}
+		if (!g && genders.includes("total")) g = "total";
+
+		const conds = [`indicator_id = ${lit(ind)}`, `dataset_id = ${lit(ds)}`, `area_level = ${lit(lv)}`];
+		if (g) conds.push(`gender = ${lit(g)}`);
+		if (sel?.age_lower != null) conds.push(`age_lower >= ${Number(sel.age_lower)}`);
+		if (sel?.age_upper != null) conds.push(`age_upper <= ${Number(sel.age_upper)}`);
+
+		// 期間：沒指定就用最新一期，而且要把**實際解析出來的日期**回報出去。
+		// 原本不回報，模型只好拿 inspect_indicator 的期間範圍去猜，
+		// 於是把 2025 單年的 17,547 標成「2020-2025 累計」（真正累計是 84,584）。
+		let period = null;
+		if (sel?.period && sel.period !== "all") {
+			period = String(sel.period);
+			conds.push(`period_start = ${lit(period)}`);
+		} else if (sel?.period !== "all") {
+			const w = "WHERE " + conds.join(" AND ");
+			period = (await query(
+				`SELECT max(period_start)::text AS p FROM public.youth_fact_named ${w}`))[0]?.p || null;
+			if (period) conds.push(`period_start = ${lit(period)}`);
+		}
+
+		const age = sel?.age_lower != null || sel?.age_upper != null
+			? `${sel?.age_lower ?? ""}-${sel?.age_upper ?? ""} 歲` : "(全年齡)";
+		return {
+			ind, conds,
+			where: "WHERE " + conds.join(" AND "),
+			applied: { indicator_id: ind, dataset_id: ds, area_level: lv,
+				gender: g || "(不篩，此指標無 total)", age,
+				period: period || "(全部期間)" },
+		};
+	}
+
+	/**
+	 * 把 applied 轉成給人看的 trace 標籤。
+	 * 前端的「查詢過程」只印 args 的**值**、不印鍵（ChatBox.vue 的
+	 * Object.values(...).join），所以值本身必須自帶標籤，
+	 * 否則畫面上會出現一個孤零零的「total」，沒人看得出那是性別。
+	 */
+	const traceArgs = (a, extra = {}) => ({
+		指標: a.indicator_id,
+		資料集: a.dataset_id,
+		層級: a.area_level,
+		性別: `性別=${a.gender}`,
+		...(a.age && a.age !== "(全年齡)" ? { 年齡: a.age } : {}),
+		...(a.period && a.period !== "(全部期間)" ? { 期間: a.period } : { 期間: "全部期間" }),
+		...extra,
+	});
+
+	/** 三個工具共用的參數形狀，省得各寫一份會走樣 */
+	const SELECTOR_SCHEMA = {
+		type: "object",
+		properties: {
+			indicator_id: { type: "string" },
+			dataset_id: { type: "string", description: "指標橫跨多個資料集時必填" },
+			area_level: { type: "string", description: "district / city / country" },
+			gender: { type: "string" },
+			age_lower: { type: "number", description: "年齡下界（含）" },
+			age_upper: { type: "number", description: "年齡上界（含）" },
+			period: { type: "string", description: "期間開始日，例如 2021-01-01。省略＝最新一期，填 all＝全部期間" },
+		},
+		required: ["indicator_id"],
+	};
+
+	// ── 3a. 直接取數字 ──
 	const queryIndicator = {
 		name: "query_indicator",
 		label: "查數值",
 		description:
-			"取某個指標的實際數值。用來在建組件前確認資料長什麼樣，或回答不需要圖表的問題。\n" +
-			"by 決定分組方式：district（各行政區）或 period（歷年）。\n" +
-			"指標橫跨多個資料集時**必須**指定 dataset_id，否則會被擋下來。\n" +
-			"不指定 area_level 預設用 district；該指標有 total 性別時不指定 gender 會自動用 total。" +
-			"實際生效的條件都會寫在回傳結果的 applied 欄位裡。",
+			"取某個指標的實際數值。by=district 看各行政區，by=period 看歷年。\n" +
+			"**回傳的 applied 會寫出實際生效的條件與期間，引用數字時要照著寫，不要自己推測期間。**\n" +
+			"指標橫跨多個資料集時必須指定 dataset_id。",
 		parameters: {
 			type: "object",
 			properties: {
-				indicator_id: { type: "string" },
+				...SELECTOR_SCHEMA.properties,
 				by: { type: "string", description: "district 或 period" },
-				dataset_id: { type: "string", description: "指標橫跨多個資料集時必填" },
-				area_level: { type: "string", description: "district / city / country，預設 district" },
-				age_lower: { type: "number", description: "可選，年齡下界（含）" },
-				age_upper: { type: "number", description: "可選，年齡上界（含）" },
-				gender: { type: "string", description: "可選，先用 inspect_indicator 確認有哪些值" },
 			},
 			required: ["indicator_id", "by"],
 		},
 		async execute(_id, p) {
-			const ind = String(p?.indicator_id ?? "");
 			const by = p?.by === "period" ? "period" : "district";
-			const bad = (summary, obj) => { note("query_indicator", { indicator_id: ind, by }, summary); return result(obj); };
-
-			// 先問清楚這個指標長什麼樣，再決定要不要擋
-			const shape = (await query(`
-				SELECT string_agg(DISTINCT dataset_id, ',' ORDER BY dataset_id) AS datasets,
-				       string_agg(DISTINCT area_level, ',' ORDER BY area_level) AS levels,
-				       string_agg(DISTINCT gender, ',' ORDER BY gender)         AS genders
-				FROM public.youth_fact_named WHERE indicator_id = ${lit(ind)}`))[0];
-			if (!shape?.datasets) {
-				return bad("查無此指標",
-					{ error: `查無指標 ${ind}`, hint: "先用 search_indicators 確認代號" });
+			// by=period 是看歷年，不該被釘在單一期間
+			const sel = by === "period" ? { ...p, period: p?.period || "all" } : p;
+			const r = await resolveSelector(sel, { forDistrict: by === "district" });
+			if (r.error) {
+				note("query_indicator", { indicator_id: String(p?.indicator_id ?? ""), by }, "被擋下");
+				return result(r);
 			}
-			const datasets = shape.datasets.split(",");
-			const levels = shape.levels.split(",");
-			const genders = (shape.genders || "").split(",").filter(Boolean);
-
-			// 跨資料集的指標一旦不指定，就是把不同母體加在一起。這種錯沒有補救辦法，只能擋。
-			const ds = p?.dataset_id ? String(p.dataset_id)
-				: (datasets.length === 1 ? datasets[0] : null);
-			if (!ds) {
-				return bad(`要指定 dataset_id（有 ${datasets.length} 個）`, {
-					error: `${ind} 同時存在於 ${datasets.length} 個資料集，不指定會把不同母體加在一起`,
-					datasets, hint: "挑一個 dataset_id 再查一次",
-				});
-			}
-			if (!datasets.includes(ds)) {
-				return bad("dataset_id 不存在", { error: `${ind} 不在資料集 ${ds} 裡`, datasets });
-			}
-
-			// 地理層級不篩，會把全國／全市／行政區的數字疊起來
-			const lv = by === "district" ? "district"
-				: (p?.area_level ? String(p.area_level)
-					: (levels.includes("district") ? "district" : levels[0]));
-			if (!levels.includes(lv)) {
-				return bad(`沒有 ${lv} 層級`, {
-					error: `${ind} 沒有 ${lv} 層級` + (by === "district" ? "，畫不出分區圖" : ""),
-					area_levels: levels,
-				});
-			}
-
-			// 有 total 又不篩 gender＝total 跟 male/female 一起加，剛好兩倍
-			let g = p?.gender ? String(p.gender) : null;
-			if (g && !genders.includes(g)) {
-				return bad(`沒有 gender=${g}`, {
-					error: `${ind} 沒有 gender=${g} 這個值，硬篩會得到空結果`, genders,
-				});
-			}
-			if (!g && genders.includes("total")) g = "total";
-
-			const conds = [`indicator_id = ${lit(ind)}`, `dataset_id = ${lit(ds)}`, `area_level = ${lit(lv)}`];
-			if (g) conds.push(`gender = ${lit(g)}`);
-			if (p?.age_lower != null) conds.push(`age_lower >= ${Number(p.age_lower)}`);
-			if (p?.age_upper != null) conds.push(`age_upper <= ${Number(p.age_upper)}`);
-			const where = "WHERE " + conds.join(" AND ");
-
-			// 分區看最新一期；歷年看全部
-			const latest = by === "district"
-				? ` AND period_start = (SELECT max(period_start) FROM public.youth_fact_named ${where})`
-				: "";
 			const key = by === "district" ? "area_name" : "period_start::text";
 			const rows = await query(`
 				SELECT ${key} AS key, round(sum(value)::numeric, 2) AS value
-				FROM public.youth_fact_named ${where}${latest}
+				FROM public.youth_fact_named ${r.where}
 				GROUP BY 1 ORDER BY ${by === "district" ? "2 DESC" : "1"} LIMIT 120`);
-
-			const age = p?.age_lower != null || p?.age_upper != null
-				? `${p?.age_lower ?? ""}-${p?.age_upper ?? ""} 歲` : "";
-			note("query_indicator", {
-				indicator_id: ind, by, dataset_id: ds, area_level: lv,
-				...(age ? { age } : {}), ...(g ? { gender: `gender=${g}` } : { gender: "未篩性別" }),
-			}, rows.length ? `${rows.length} 筆` : "0 筆（條件可能把資料濾光）");
-
-			// applied 是給模型看的：它引用數字時要知道這批數字的口徑是什麼
+			note("query_indicator", traceArgs(r.applied, { 分組: by === "district" ? "各行政區" : "歷年" }),
+				rows.length ? `${rows.length} 筆` : "0 筆（條件可能把資料濾光）");
 			return result({
-				applied: { dataset_id: ds, area_level: lv, gender: g || "(不篩，此指標無 total)", age: age || "(全年齡)" },
+				applied: { ...r.applied, by },
 				rows: rows.length ? rows : undefined,
 				...(rows.length ? {} : { hint: "查無資料，先用 inspect_indicator 確認年齡區間與期間" }),
+			}, { n: rows.length });
+		},
+	};
+
+	// ── 3b. 兩個指標的相關性：交給資料庫算，不要用眼睛看 ──
+	//
+	// 2026-09-12 的八題跨領域測試裡，三題相關性問題**三題都偏掉**：
+	//   青年人口 vs 租金    模型說「沒有明顯正相關」  實際 r = 0.668
+	//   生育率 vs 青年人口  模型說「呈現相反的關係」  實際 r = -0.200（很弱）
+	//   事故 vs YouBike     模型說「不完全一致」      實際 r = 0.924（極強）
+	// 它看的是自己列出來的表格，不是全部 29 個區，於是方向和強弱都估錯。
+	// strength 這個標籤也由程式給，不讓模型自己決定「明顯」是多少。
+	const correlateIndicators = {
+		name: "correlate_indicators",
+		label: "算相關性",
+		description:
+			"計算兩個指標在各行政區之間的相關係數（Pearson 與 Spearman），由資料庫算。\n" +
+			"**只要問題是「A 高的區 B 是不是也高」這類關聯，一律用這個工具，不要自己看表格判斷。**\n" +
+			"回傳會包含樣本數、強弱標籤，以及兩邊涵蓋範圍不同而被排除的行政區。",
+		parameters: {
+			type: "object",
+			properties: { a: SELECTOR_SCHEMA, b: SELECTOR_SCHEMA },
+			required: ["a", "b"],
+		},
+		async execute(_id, p) {
+			const ra = await resolveSelector(p?.a, { forDistrict: true });
+			if (ra.error) { note("correlate_indicators", { a: p?.a?.indicator_id }, "A 被擋下"); return result({ side: "a", ...ra }); }
+			const rb = await resolveSelector(p?.b, { forDistrict: true });
+			if (rb.error) { note("correlate_indicators", { b: p?.b?.indicator_id }, "B 被擋下"); return result({ side: "b", ...rb }); }
+
+			const sql = `
+				WITH a AS (SELECT area_name, sum(value) v FROM public.youth_fact_named ${ra.where} GROUP BY 1),
+				     b AS (SELECT area_name, sum(value) v FROM public.youth_fact_named ${rb.where} GROUP BY 1),
+				     j AS (SELECT a.area_name, a.v va, b.v vb FROM a JOIN b USING (area_name)),
+				     rk AS (SELECT rank() OVER (ORDER BY va) ra, rank() OVER (ORDER BY vb) rb FROM j)
+				SELECT (SELECT count(*) FROM j)  AS n,
+				       (SELECT count(*) FROM a)  AS n_a,
+				       (SELECT count(*) FROM b)  AS n_b,
+				       (SELECT round(corr(va, vb)::numeric, 3) FROM j)  AS pearson,
+				       (SELECT round(corr(ra, rb)::numeric, 3) FROM rk) AS spearman,
+				       (SELECT string_agg(x, '、') FROM (
+				          SELECT area_name x FROM a WHERE area_name NOT IN (SELECT area_name FROM b)
+				          UNION SELECT area_name FROM b WHERE area_name NOT IN (SELECT area_name FROM a)
+				       ) _u_) AS dropped`;
+			const row = (await query(sql))[0] || {};
+			const r = row.pearson === null || row.pearson === undefined ? null : Number(row.pearson);
+			const abs = r === null ? null : Math.abs(r);
+			// 強弱由程式判定，模型只負責把它寫進句子
+			const strength = abs === null ? "算不出來"
+				: abs < 0.2 ? "幾乎沒有關聯"
+				: abs < 0.4 ? "微弱"
+				: abs < 0.6 ? "中等"
+				: abs < 0.8 ? "強" : "很強";
+			const out = {
+				a: ra.applied, b: rb.applied,
+				n_districts: Number(row.n),
+				pearson: r, spearman: row.spearman === null ? null : Number(row.spearman),
+				direction: r === null ? null : (r > 0 ? "正相關" : r < 0 ? "負相關" : "無方向"),
+				strength,
+				...(row.dropped ? { excluded_districts: row.dropped,
+					note: `這些行政區只有其中一邊有資料，已排除；相關係數是用 ${row.n} 個區算的` } : {}),
+				...(Number(row.n) < 8 ? { warning: "樣本數太少，相關係數不穩定，不要下強結論" } : {}),
+			};
+			note("correlate_indicators",
+				{ a: ra.applied.indicator_id, b: rb.applied.indicator_id },
+				`r=${r}（${strength}${out.direction ? "・" + out.direction : ""}）n=${row.n}`);
+			return result(out, { n: Number(row.n) });
+		},
+	};
+
+	// ── 3c. 兩個指標相除：比例與排名一律 SQL 算完 ──
+	//
+	// 同一批測試裡，「租金中位數佔平均所得多少」那題：模型每個百分比單獨算都對，
+	// 但排名錯了（中和 30.5% 排在新莊 30.7% 前面），而且漏掉四個該進前五的區——
+	// 它只對自己列出來的那幾個區做了除法。這裡回傳全部 29 個區並且排序好。
+	const compareIndicators = {
+		name: "compare_indicators",
+		label: "算比例排名",
+		description:
+			"把兩個指標相除，算出各行政區的比例並排序，由資料庫算。\n" +
+			"**「A 佔 B 多少」「哪一區負擔最重」「比例最高」這類問題一律用這個，不要自己除。**\n" +
+			"單位不同時用 numerator_scale / denominator_scale 換算（例如年所得千元換成月所得元：denominator_scale = 1000/12 ≈ 83.333）。",
+		parameters: {
+			type: "object",
+			properties: {
+				numerator: SELECTOR_SCHEMA,
+				denominator: SELECTOR_SCHEMA,
+				numerator_scale: { type: "number", description: "分子乘數，預設 1" },
+				denominator_scale: { type: "number", description: "分母乘數，預設 1" },
+				scale: { type: "number", description: "結果乘數，預設 100（＝百分比）" },
+			},
+			required: ["numerator", "denominator"],
+		},
+		async execute(_id, p) {
+			const rn = await resolveSelector(p?.numerator, { forDistrict: true });
+			if (rn.error) { note("compare_indicators", { 分子: p?.numerator?.indicator_id }, "分子被擋下"); return result({ side: "numerator", ...rn }); }
+			const rd = await resolveSelector(p?.denominator, { forDistrict: true });
+			if (rd.error) { note("compare_indicators", { 分母: p?.denominator?.indicator_id }, "分母被擋下"); return result({ side: "denominator", ...rd }); }
+
+			const ns = Number(p?.numerator_scale ?? 1) || 1;
+			const dsc = Number(p?.denominator_scale ?? 1) || 1;
+			const sc = Number(p?.scale ?? 100) || 100;
+			const rows = await query(`
+				WITH a AS (SELECT area_name, sum(value) v FROM public.youth_fact_named ${rn.where} GROUP BY 1),
+				     b AS (SELECT area_name, sum(value) v FROM public.youth_fact_named ${rd.where} GROUP BY 1)
+				SELECT a.area_name AS area,
+				       round(a.v::numeric, 2) AS numerator,
+				       round(b.v::numeric, 2) AS denominator,
+				       round(((a.v * ${ns}) / nullif(b.v * ${dsc}, 0) * ${sc})::numeric, 2) AS ratio
+				FROM a JOIN b USING (area_name)
+				WHERE b.v IS NOT NULL AND b.v <> 0
+				ORDER BY ratio DESC NULLS LAST`);
+			note("compare_indicators",
+				{ 分子: rn.applied.indicator_id, 分母: rd.applied.indicator_id },
+				`${rows.length} 個區，已排序`);
+			return result({
+				numerator: rn.applied, denominator: rd.applied,
+				scales: { numerator_scale: ns, denominator_scale: dsc, result_scale: sc },
+				ranked: rows,
+				note: "ranked 已經由高到低排好，直接照順序引用，不要自己重排或只取你看過的幾個區",
 			}, { n: rows.length });
 		},
 	};
@@ -348,6 +520,7 @@ export function buildTools(catalog, onCall = () => {}) {
 
 	return {
 		tools: [searchIndicators, inspectIndicator, queryIndicator,
+			correlateIndicators, compareIndicators,
 			buildComponent, listOfficial, listDomains],
 		trace,
 	};
