@@ -225,6 +225,35 @@ function handleMoreInfo(item) {
 </template>
 
 <style scoped lang="scss">
+// 小幫手側邊欄展開時的欄數斷點。
+//
+// 上面那組斷點是 @media，看的是**視窗**寬度；側邊欄吃掉的 400px 它不知道，
+// 於是 1300px 的螢幕展開側邊欄後，剩 900px 卻還是排三欄，組件被擠到看不清楚。
+// 這裡把每個門檻往上推 400px，讓欄數依「實際可用寬度」變化。
+//
+// 只在 900px 以上生效——900px 以下是覆蓋模式，版面沒有被推擠，不該改欄數。
+@media (min-width: 900px) {
+	.app-container.chat-open .dashboard {
+		grid-template-columns: 1fr;
+
+		@media (min-width: 1120px) {
+			grid-template-columns: 1fr 1fr;
+		}
+
+		@media (min-width: 1696px) {
+			grid-template-columns: 1fr 1fr 1fr;
+		}
+
+		@media (min-width: 2200px) {
+			grid-template-columns: 1fr 1fr 1fr 1fr;
+		}
+
+		@media (min-width: 2600px) {
+			grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+		}
+	}
+}
+
 .dashboard {
 	max-height: calc(100vh - 127px);
 	max-height: calc(var(--vh) * 100 - 127px);
