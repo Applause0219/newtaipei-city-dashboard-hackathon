@@ -51,7 +51,11 @@ const rows = await q(`
 	       max(period_end)::text   AS period_to,
 	       count(*)                AS rows,
 	       bool_or(age_lower IS NOT NULL)                    AS has_age,
-	       bool_or(gender IS NOT NULL AND gender <> 'total') AS has_gender
+	       bool_or(gender IS NOT NULL AND gender <> 'total') AS has_gender,
+	       -- 實際有哪些性別值。21/70 個資料集根本沒有 total 列
+	       -- （生育率只有 female、結婚只有 male/female、消費是 NULL），
+	       -- 模型照習慣篩 total 就會把資料濾光，而 SQL 不會報錯。
+	       string_agg(DISTINCT coalesce(gender, '(null)'), '/' ORDER BY coalesce(gender, '(null)')) AS genders
 	FROM public.youth_fact_named
 	GROUP BY 1, 2
 	ORDER BY 1, 2`);
@@ -128,7 +132,7 @@ for (const [ds, list] of byDataset) {
 		out.push(`        period: "${r.period_from} – ${r.period_to}"`);
 		out.push(`        rows: ${r.rows}`);
 		if (r.has_age) out.push("        has_age_bands: true");
-		if (r.has_gender) out.push("        has_gender: true");
+		out.push(`        genders: [${String(r.genders).split("/").map((g) => `"${g}"`).join(", ")}]`);
 	}
 }
 

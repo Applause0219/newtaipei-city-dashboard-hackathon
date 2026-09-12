@@ -180,6 +180,34 @@ export function validateSpec(spec, catalog) {
 						+ `（${meta[need]?.note || "否則會重複計算"}）`);
 				}
 			}
+			// 篩一個該指標根本沒有的性別值 → 回空結果，而且 SQL 不報錯。
+			//
+			// 21/70 個資料集沒有 total 列：生育率只有 female（那本來就是
+			// 婦女指標）、結婚只有 male/female、消費是 NULL。
+			// 但目錄教模型「沒提到性別就篩 total」，於是它照做然後濾光。
+			// 22 題探測裡有 3 題栽在這裡。
+			const indFilters = [...(spec.filters || []),
+			                    ...spec.series.map((sr) => sr.filter).filter(Boolean)]
+				.filter((f) => f.column === "indicator_id" && "eq" in f);
+			const genderFilter = [...(spec.filters || []),
+			                      ...spec.series.map((sr) => sr.filter).filter(Boolean)]
+				.find((f) => f.column === "gender" && "eq" in f);
+			if (genderFilter && indFilters.length && catalog.youthDatasets) {
+				for (const f of indFilters) {
+					// 找出這個指標所屬的資料集（可能多個，歧義的情況上面已擋）
+					for (const [ds, d] of Object.entries(catalog.youthDatasets)) {
+						const meta2 = d.indicators?.[f.eq];
+						if (!meta2?.genders) continue;
+						if (!meta2.genders.includes(genderFilter.eq)) {
+							push(`指標 ${f.eq} 沒有 gender="${genderFilter.eq}" 的資料`
+								+ `（實際只有 ${meta2.genders.join("、")}）。`
+								+ `篩下去會得到空結果。不分性別時請直接不要篩 gender。`);
+						}
+						break;
+					}
+				}
+			}
+
 			// indicator_id 不是全域唯一：7 個跨資料集重複，
 			// 只篩 indicator_id 會把兩份資料的數字加在一起
 			for (const f of [...(spec.filters || []),
@@ -269,6 +297,41 @@ export function whereClause(spec, extra = []) {
 	return parts.length ? "WHERE " + parts.join("\n      AND ") : "";
 }
 
+/**
+ * 從模型輸出裡撈出 JSON 物件，容忍前後夾雜的散文。
+ *
+ * 為什麼需要：原本只剝除字串**頭尾**的 ``` 圍欄，前面有一段推論就失效。
+ * 目錄從 3 張表長到 151 組指標之後，挑選變難，模型開始邊想邊寫——
+ * 22 題探測裡有 4 題因此被誤判成「模型不聽話」，其實它答對了只是話多。
+ *
+ * 用括號配對掃描而不是正則：JSON 是遞迴結構，正則配不出巢狀。
+ * 掃描時要跳過字串內的括號，否則 {"a":"{"} 這種值會把配對算錯。
+ *
+ * @returns {object|null} 第一個完整的 JSON 物件，找不到回 null
+ */
+export function extractJsonObject(text) {
+	const s = String(text ?? "");
+	for (let start = s.indexOf("{"); start !== -1; start = s.indexOf("{", start + 1)) {
+		let depth = 0, inStr = false, esc = false;
+		for (let i = start; i < s.length; i++) {
+			const ch = s[i];
+			if (inStr) {
+				if (esc) esc = false;
+				else if (ch === "\\") esc = true;
+				else if (ch === '"') inStr = false;
+				continue;
+			}
+			if (ch === '"') inStr = true;
+			else if (ch === "{") depth++;
+			else if (ch === "}" && --depth === 0) {
+				try { return JSON.parse(s.slice(start, i + 1)); }
+				catch { break; }   // 這個候選不合法，換下一個 {
+			}
+		}
+	}
+	return null;
+}
+
 /** 允許的聚合函式。與 catalog.yaml 的 agg_rules 用同一組名稱。 */
 const AGGREGATES = ["sum", "avg", "min", "max"];
 
@@ -337,13 +400,29 @@ export function compileSpec(spec, xOrder) {
 		].filter(Boolean).join("\n");
 	}
 
+	// 每個數列都必須對 xOrder 裡的**每一個** x 產生一列，缺的補 0。
+	//
+	// 為什麼不能直接 SELECT：不同指標涵蓋的行政區不一樣。
+	// 實測租金只有 27 區（坪林、平溪沒有租賃實價登錄），所得有 29 區。
+	// 直接 UNION 出來兩個數列長度不同，而後端是「按列序 append、
+	// 不對應 category」（componentData.go:301-325），於是從缺的那一區
+	// 開始，後面所有數值全部對到錯的行政區——圖畫得出來，數字全錯。
+	//
+	// 用 xOrder 當左表 LEFT JOIN 回資料，長度就一定一致。
+	const xUniverse = `(VALUES\n      ${xOrder.map((v) => `(${lit(v)})`).join(",\n      ")}\n    ) AS _x_(v)`;
 	const blocks = spec.series.map((s, i) => {
 		const alias = i === 0 ? ` AS x_axis` : "";
 		const yAlias = i === 0 ? ` AS y_axis` : "";
 		const dAlias = i === 0 ? ` AS data` : "";
 		const w = whereFor(s);
-		return `    SELECT ${asText(x)}${alias}, ${lit(s.label)}${yAlias}, ${metricExpr(spec, s.column)}${dAlias}\n` +
-		       `    FROM ${t}\n` + (w ? `    ${w}\n` : "") + (groupBy ? `    ${groupBy}\n` : "");
+		// 子查詢先算出「有資料的那些 x 的值」，再 LEFT JOIN 補齊
+		const inner =
+			`      SELECT ${asText(x)} AS k, ${metricExpr(spec, s.column)} AS m\n` +
+			`      FROM ${t}\n` + (w ? `      ${w}\n` : "") +
+			(groupBy ? `      ${groupBy}\n` : "");
+		return `    SELECT _x_.v${alias}, ${lit(s.label)}${yAlias}, coalesce(_d_.m, 0)${dAlias}\n` +
+		       `    FROM ${xUniverse}\n` +
+		       `    LEFT JOIN (\n${inner}    ) _d_ ON _d_.k = _x_.v\n`;
 	});
 
 	const yOrder = spec.series.map((s) => s.label);

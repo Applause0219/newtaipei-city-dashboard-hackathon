@@ -16,6 +16,8 @@
 // 9/12 放 AWS 憑證同樣用這個檔案。
 import "./load-secrets.js";
 
+import { extractJsonObject } from "./component-spec.js";
+
 const PROVIDER = process.env.AI_PROVIDER || "stub";
 
 /**
@@ -128,13 +130,14 @@ export async function generateSpec(prompt) {
 			PROVIDER === "gemini"  ? await generateGemini(prompt) :
 				await stubSpec(prompt);
 
-	// 模型有時仍會包在 ```json 裡，容忍但不鼓勵
-	const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
-	try {
-		const obj = JSON.parse(cleaned);
+	// 模型不只會包 ```json 圍欄，目錄變大之後還會在前面先寫一段推論。
+	// extractJsonObject 用括號配對撈出第一個完整物件，容忍前後的散文。
+	const obj = extractJsonObject(text);
+	if (obj) {
 		if (obj.refuse) return { refuse: obj.refuse, model, raw: text };
 		return { spec: obj, model, raw: text };
-	} catch {
+	}
+	{
 		const hint = finishReason === "MAX_TOKENS"
 			? "輸出被截斷（finishReason=MAX_TOKENS），請調高 maxOutputTokens"
 			: finishReason && finishReason !== "STOP"

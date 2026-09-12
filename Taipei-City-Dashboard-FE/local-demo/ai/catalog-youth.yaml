@@ -1,6 +1,6 @@
 # 由 tools/gen-youth-catalog.mjs 產生，不要手改。
 # 來源：資料庫 youth_fact（真相）＋ DE 的 job_config.json（語意）
-# 產生時間：2026-09-12 09:08
+# 產生時間：2026-09-12 09:18
 
 # 這些 indicator_id 跨資料集重複。只篩 indicator_id 會把多份資料
 # 的數字加在一起，所以必須同時指定 dataset_id。validateSpec 會擋。
@@ -26,7 +26,7 @@ youth_datasets:
         period: "2019-01-01 – 2025-12-31"
         rows: 22532
         has_age_bands: true
-        has_gender: true
+        genders: ["female"]
   youth_birth_parent_age_ntpc:
     label: "新北市嬰兒出生數（按生父、生母年齡及嬰兒性別）"
     topics: ["出生", "生父年齡", "生母年齡", "戶政司"]
@@ -39,7 +39,7 @@ youth_datasets:
         period: "2021-01-01 – 2025-12-31"
         rows: 11540
         has_age_bands: true
-        has_gender: true
+        genders: ["male"]
   youth_bureau_activity_ntpc:
     label: "新北市政府青年局統計年報活動參與"
     topics: ["青年局", "活動參與", "職涯", "創業", "國際交流"]
@@ -51,33 +51,35 @@ youth_datasets:
         area_levels: ["city"]
         period: "2022-01-01 – 2025-12-31"
         rows: 16
+        genders: ["total"]
       youth_bureau_career_participation_count:
         value_type: count
         unit: "人次"
         area_levels: ["city"]
         period: "2022-01-01 – 2025-12-31"
         rows: 48
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_bureau_entrepreneurship_activity_session_count:
         value_type: count
         unit: "場"
         area_levels: ["city"]
         period: "2022-01-01 – 2025-12-31"
         rows: 4
+        genders: ["total"]
       youth_bureau_entrepreneurship_participation_count:
         value_type: count
         unit: "人次"
         area_levels: ["city"]
         period: "2022-01-01 – 2025-12-31"
         rows: 45
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_bureau_international_participation_count:
         value_type: count
         unit: "人次"
         area_levels: ["city"]
         period: "2022-01-01 – 2025-12-31"
         rows: 48
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_bureau_program_stats_ntpc:
     label: "新北市青年局 A05-A08 青年服務、青創課程及綜合發展補助統計"
     topics: ["青年局", "職涯", "創業", "補助"]
@@ -90,44 +92,49 @@ youth_datasets:
         period: "2024-01-01 – 2024-12-31"
         rows: 12
         has_age_bands: true
+        genders: ["total"]
       youth_bureau_career_identity_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2024-01-01 – 2024-12-31"
         rows: 5
+        genders: ["total"]
       youth_bureau_career_service_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2024-01-01 – 2024-12-31"
         rows: 6
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_bureau_entrepreneurship_course_registration_count:
         value_type: count
         unit: "人數"
         area_levels: ["city"]
         period: "2025-01-01 – 2026-06-30"
         rows: 18
+        genders: ["total"]
       youth_bureau_entrepreneurship_course_session_count:
         value_type: count
         unit: "場"
         area_levels: ["city"]
         period: "2025-01-01 – 2026-06-30"
         rows: 18
+        genders: ["total"]
       youth_bureau_grant_application_count:
         value_type: count
         unit: "案"
         area_levels: ["city"]
         period: "2023-01-01 – 2024-12-31"
         rows: 15
+        genders: ["total"]
       youth_bureau_grant_participant_count:
         value_type: count
         unit: "人次"
         area_levels: ["city"]
         period: "2023-01-01 – 2024-12-31"
         rows: 30
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_card_consumption_age_ntpc:
     label: "新北市各年齡層持卡人消費樣態（聯卡中心）"
     topics: ["消費", "信用卡"]
@@ -140,6 +147,7 @@ youth_datasets:
         period: "2014-01-01 – 2026-06-30"
         rows: 14700
         has_age_bands: true
+        genders: ["(null)"]
       card_transaction_count:
         value_type: count
         unit: "筆"
@@ -147,6 +155,7 @@ youth_datasets:
         period: "2014-01-01 – 2026-06-30"
         rows: 14700
         has_age_bands: true
+        genders: ["(null)"]
   youth_commute_census_ntpc:
     label: "新北市通勤通學普查流向"
     topics: ["commuting"]
@@ -158,6 +167,7 @@ youth_datasets:
         area_levels: ["city"]
         period: "2020-01-01 – 2020-12-31"
         rows: 3
+        genders: ["total"]
   youth_crime_suspect_age_ntpc:
     label: "新北市犯罪嫌疑犯人數（按年齡、罪名、性別）"
     topics: ["犯罪", "犯罪嫌疑犯"]
@@ -169,21 +179,21 @@ youth_datasets:
         area_levels: ["city"]
         period: "2016-01-01 – 2024-12-31"
         rows: 27
-        has_gender: true
+        genders: ["female", "male", "total"]
       crime_suspect_all_age_category_total_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2016-01-01 – 2024-12-31"
         rows: 216
-        has_gender: true
+        genders: ["female", "male", "total"]
       crime_suspect_all_age_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2016-01-01 – 2024-12-31"
         rows: 1755
-        has_gender: true
+        genders: ["female", "male", "total"]
       crime_suspect_all_item_count:
         value_type: count
         unit: "人"
@@ -191,7 +201,7 @@ youth_datasets:
         period: "2016-01-01 – 2024-12-31"
         rows: 297
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       crime_suspect_category_total_count:
         value_type: count
         unit: "人"
@@ -199,7 +209,7 @@ youth_datasets:
         period: "2016-01-01 – 2024-12-31"
         rows: 2376
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       crime_suspect_count:
         value_type: count
         unit: "人"
@@ -207,28 +217,28 @@ youth_datasets:
         period: "2016-01-01 – 2024-12-31"
         rows: 19305
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       crime_suspect_unknown_age_all_item_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2016-01-01 – 2024-12-31"
         rows: 27
-        has_gender: true
+        genders: ["female", "male", "total"]
       crime_suspect_unknown_age_category_total_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2016-01-01 – 2024-12-31"
         rows: 216
-        has_gender: true
+        genders: ["female", "male", "total"]
       crime_suspect_unknown_age_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2016-01-01 – 2024-12-31"
         rows: 1755
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_crime_victim_age_ntpc:
     label: "新北市刑事案件被害者人數（按年齡、性別）"
     topics: ["犯罪被害者"]
@@ -240,7 +250,7 @@ youth_datasets:
         area_levels: ["city"]
         period: "2008-01-01 – 2024-12-31"
         rows: 34
-        has_gender: true
+        genders: ["female", "male"]
       crime_victim_count:
         value_type: count
         unit: "人"
@@ -248,14 +258,14 @@ youth_datasets:
         period: "2008-01-01 – 2024-12-31"
         rows: 374
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
       crime_victim_unknown_age_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2008-01-01 – 2024-12-31"
         rows: 34
-        has_gender: true
+        genders: ["female", "male"]
   youth_cultural_volunteer_age_ntpc:
     label: "新北市市民文化統計"
     topics: ["public-participation", "cultural", "volunteer"]
@@ -268,7 +278,7 @@ youth_datasets:
         period: "2006-01-01 – 2024-12-31"
         rows: 266
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_death_age_group_ntpc:
     label: "新北市死亡人數（按年齡組、性別）"
     topics: ["死亡"]
@@ -281,7 +291,7 @@ youth_datasets:
         period: "2006-01-01 – 2023-12-31"
         rows: 252
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_death_rate_single_age_ntpc:
     label: "新北市人口死亡率（按性別及單一年齡）"
     topics: ["死亡率", "率", "戶政司"]
@@ -294,7 +304,7 @@ youth_datasets:
         period: "2024-01-01 – 2025-12-31"
         rows: 403
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_death_single_age_ntpc:
     label: "新北市死亡人數（按死亡者單齡年齡、性別、行政區）"
     topics: ["死亡", "戶政司"]
@@ -307,7 +317,7 @@ youth_datasets:
         period: "2017-01-01 – 2025-12-31"
         rows: 52520
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_digital_access_age_tw:
     label: "數位發展調查年齡別網路與電腦使用率"
     topics: ["digital", "internet"]
@@ -320,6 +330,7 @@ youth_datasets:
         period: "2004-01-01 – 2016-12-31"
         rows: 95
         has_age_bands: true
+        genders: ["total"]
       internet_age_rate_tw:
         value_type: rate
         unit: "%"
@@ -327,18 +338,21 @@ youth_datasets:
         period: "2004-01-01 – 2025-12-31"
         rows: 154
         has_age_bands: true
+        genders: ["total"]
       internet_use_rate_ntpc_total:
         value_type: rate
         unit: "%"
         area_levels: ["city"]
         period: "2004-01-01 – 2025-12-31"
         rows: 21
+        genders: ["total"]
       internet_use_rate_tw_total:
         value_type: rate
         unit: "%"
         area_levels: ["country"]
         period: "2004-01-01 – 2025-12-31"
         rows: 21
+        genders: ["total"]
   youth_disability_age_ntpc:
     label: "定額進用身心障礙者實際進用人數－按原住民、性別、年齡及地區別分"
     topics: ["rights", "disability"]
@@ -351,6 +365,7 @@ youth_datasets:
         period: "2011-12-31 – 2025-12-31"
         rows: 180
         has_age_bands: true
+        genders: ["total"]
   youth_divorce_age_structure_ntpc:
     label: "新北市離婚人口年齡結構比（按性別）"
     topics: ["離婚", "年齡結構", "率"]
@@ -363,7 +378,7 @@ youth_datasets:
         period: "2006-01-01 – 2024-12-31"
         rows: 228
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_divorce_rate_age_ntpc:
     label: "新北市有偶人口離婚率（按性別及年齡）"
     topics: ["離婚率", "有偶人口", "率", "戶政司"]
@@ -376,7 +391,7 @@ youth_datasets:
         period: "2024-01-01 – 2025-12-31"
         rows: 36
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_edu_dropout_ntpc:
     label: "新北市大專校院退學人數（含原因）"
     topics: ["教育", "大專校院", "退學", "經濟困難", "工作", "傷病"]
@@ -388,7 +403,7 @@ youth_datasets:
         area_levels: ["city"]
         period: "2016-08-01 – 2025-07-31"
         rows: 41795
-        has_gender: true
+        genders: ["female", "male"]
   youth_edu_graduates:
     label: "大專校院校別畢業生數（含縣市、學制、性別）"
     topics: ["教育", "畢業生", "大專校院", "教育部統計處"]
@@ -400,7 +415,7 @@ youth_datasets:
         area_levels: ["city"]
         period: "2013-08-01 – 2025-07-31"
         rows: 28238
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_edu_registration_ntpc:
     label: "新北市大專校院新生註冊率"
     topics: ["教育", "大專校院", "新生註冊率", "rate"]
@@ -412,6 +427,7 @@ youth_datasets:
         area_levels: ["city"]
         period: "2017-08-01 – 2026-07-31"
         rows: 186
+        genders: ["total"]
   youth_edu_students:
     label: "大專校院在學學生數（含縣市、學制、性別）"
     topics: ["教育", "在學學生", "大專校院", "教育部統計處", "學年度"]
@@ -423,7 +439,7 @@ youth_datasets:
         area_levels: ["city"]
         period: "2014-08-01 – 2025-07-31"
         rows: 3615
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_edu_suspend_ntpc:
     label: "新北市大專校院休學人數（含原因）"
     topics: ["教育", "大專校院", "休學", "經濟困難", "工作", "傷病"]
@@ -435,7 +451,7 @@ youth_datasets:
         area_levels: ["city"]
         period: "2016-08-01 – 2025-07-31"
         rows: 26258
-        has_gender: true
+        genders: ["female", "male"]
   youth_education_age_ntpc:
     label: "新北市十五歲以上現住人口教育程度（按年齡別、性別）"
     topics: ["教育", "主計處"]
@@ -448,7 +464,7 @@ youth_datasets:
         period: "1998-01-01 – 2024-12-31"
         rows: 24948
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_election_turnout_age_ntpc:
     label: "第16任總統副總統及第11屆立法委員選舉投票統計分析原始抽樣資料（新北市）"
     topics: ["public-participation", "election", "CEC"]
@@ -461,7 +477,7 @@ youth_datasets:
         period: "2024-01-13 – 2024-01-13"
         rows: 250
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_employee_salary_age_tw:
     label: "受僱員工全年總薪資（按年齡別及業別）"
     topics: ["青年", "受僱員工", "全年總薪資", "年齡別", "主計總處"]
@@ -474,6 +490,7 @@ youth_datasets:
         period: "2021-01-01 – 2024-12-31"
         rows: 640
         has_age_bands: true
+        genders: ["total"]
       employee_salary_median_by_age:
         value_type: median
         unit: "萬元"
@@ -481,6 +498,7 @@ youth_datasets:
         period: "2021-01-01 – 2024-12-31"
         rows: 640
         has_age_bands: true
+        genders: ["total"]
   youth_employment_structure_age_tw:
     label: "就業者之行業／職業及年齡"
     topics: ["青年", "就業者", "行業", "職業", "主計總處"]
@@ -493,14 +511,14 @@ youth_datasets:
         period: "2021-01-01 – 2025-12-31"
         rows: 3588
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       employment_industry_total_count:
         value_type: count
         unit: "千人"
         area_levels: ["country"]
         period: "2021-01-01 – 2025-12-31"
         rows: 330
-        has_gender: true
+        genders: ["female", "male", "total"]
       employment_occupation_count_by_age:
         value_type: count
         unit: "千人"
@@ -508,14 +526,14 @@ youth_datasets:
         period: "2021-01-01 – 2025-12-31"
         rows: 1303
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       employment_occupation_total_count:
         value_type: count
         unit: "千人"
         area_levels: ["country"]
         period: "2021-01-01 – 2025-12-31"
         rows: 120
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_fertility_rate_age_ntpc:
     label: "新北市生育率與年中有偶婦女（按年齡、行政區）"
     topics: ["生育率", "年齡別生育率", "有偶婦女", "率", "戶政司"]
@@ -528,21 +546,21 @@ youth_datasets:
         period: "2024-01-01 – 2025-12-31"
         rows: 399
         has_age_bands: true
-        has_gender: true
+        genders: ["female"]
       fertility_rate_general:
         value_type: rate
         unit: "‰（每千名15至49歲婦女）"
         area_levels: ["district"]
         period: "2024-01-01 – 2025-12-31"
         rows: 57
-        has_gender: true
+        genders: ["female"]
       fertility_rate_total:
         value_type: rate
         unit: "‰（每名婦女一生總生育數×1000）"
         area_levels: ["district"]
         period: "2024-01-01 – 2025-12-31"
         rows: 57
-        has_gender: true
+        genders: ["female"]
       married_women_midyear_count:
         value_type: count
         unit: "人"
@@ -550,7 +568,7 @@ youth_datasets:
         period: "2024-01-01 – 2025-12-31"
         rows: 513
         has_age_bands: true
-        has_gender: true
+        genders: ["female"]
       married_women_midyear_share:
         value_type: rate
         unit: "%"
@@ -558,7 +576,7 @@ youth_datasets:
         period: "2024-01-01 – 2025-12-31"
         rows: 513
         has_age_bands: true
-        has_gender: true
+        genders: ["female"]
   youth_fraud_victim_age_ntpc:
     label: "詐欺案件被害人年齡統計（114年第2季）"
     topics: ["安全", "詐欺", "被害人"]
@@ -570,7 +588,7 @@ youth_datasets:
         area_levels: ["country"]
         period: "2025-04-01 – 2025-06-30"
         rows: 3
-        has_gender: true
+        genders: ["female", "male", "total"]
       fraud_victim_count:
         value_type: count
         unit: "人"
@@ -578,7 +596,7 @@ youth_datasets:
         period: "2025-04-01 – 2025-06-30"
         rows: 27
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_home_loan_annual_tw:
     label: "青年安心成家貸款分年觸及資料（全國）"
     topics: ["居住", "青年安心成家貸款", "政策觸及"]
@@ -590,24 +608,28 @@ youth_datasets:
         area_levels: ["nation"]
         period: "2012-01-01 – 2025-12-31"
         rows: 112
+        genders: ["total"]
       youth_home_loan_application_households:
         value_type: count
         unit: "戶"
         area_levels: ["nation"]
         period: "2012-01-01 – 2025-12-31"
         rows: 112
+        genders: ["total"]
       youth_home_loan_disbursement_amount:
         value_type: sum
         unit: "億元"
         area_levels: ["nation"]
         period: "2012-01-01 – 2025-12-31"
         rows: 112
+        genders: ["total"]
       youth_home_loan_disbursement_households:
         value_type: count
         unit: "戶"
         area_levels: ["nation"]
         period: "2012-01-01 – 2025-12-31"
         rows: 112
+        genders: ["total"]
   youth_household_income_tw:
     label: "家庭收支調查：經濟戶長年齡別可支配所得與消費"
     topics: ["economic", "家庭收支", "主計總處"]
@@ -620,6 +642,7 @@ youth_datasets:
         period: "2024-01-01 – 2024-12-31"
         rows: 48
         has_age_bands: true
+        genders: ["total"]
       household_disposable_income_mean:
         value_type: mean
         unit: "元/戶/年"
@@ -627,6 +650,7 @@ youth_datasets:
         period: "2024-01-01 – 2024-12-31"
         rows: 48
         has_age_bands: true
+        genders: ["total"]
   youth_housing_burden_ntpc:
     label: "新北市房貸負擔率與房價所得比"
     topics: ["居住", "房貸負擔率", "房價所得比"]
@@ -638,12 +662,14 @@ youth_datasets:
         area_levels: ["city"]
         period: "2026-01-01 – 2026-03-31"
         rows: 1
+        genders: ["total"]
       housing_price_income_ratio:
         value_type: index
         unit: "倍"
         area_levels: ["city"]
         period: "2026-01-01 – 2026-03-31"
         rows: 1
+        genders: ["total"]
   youth_housing_price_index_ntpc:
     label: "新北市住宅價格指數"
     topics: ["居住", "房價", "住宅價格指數", "季度"]
@@ -655,6 +681,7 @@ youth_datasets:
         area_levels: ["city"]
         period: "2012-07-01 – 2026-03-31"
         rows: 55
+        genders: ["total"]
   youth_income_tax_ntpc:
     label: "新北市各區綜合所得稅納稅單位與所得總額"
     topics: ["economic", "綜合所得稅", "財政部"]
@@ -666,18 +693,21 @@ youth_datasets:
         area_levels: ["district"]
         period: "2012-01-01 – 2022-12-31"
         rows: 319
+        genders: ["total"]
       income_tax_tax_unit_count:
         value_type: count
         unit: "戶"
         area_levels: ["district"]
         period: "2012-01-01 – 2022-12-31"
         rows: 319
+        genders: ["total"]
       income_tax_total_income:
         value_type: sum
         unit: "千元"
         area_levels: ["district"]
         period: "2012-01-01 – 2022-12-31"
         rows: 319
+        genders: ["total"]
   youth_indigenous_education_age_ntpc:
     label: "新北市十五歲以上現住原住民族人口教育程度（按年齡、性別、平地／山地）"
     topics: ["原住民族", "教育"]
@@ -690,7 +720,7 @@ youth_datasets:
         period: "2008-01-01 – 2024-12-31"
         rows: 31416
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_indigenous_population_age_ntpc:
     label: "新北市原住民人口（單齡年齡、身分、性別、行政區）"
     topics: ["原住民", "人口", "戶政司"]
@@ -703,7 +733,7 @@ youth_datasets:
         period: "2018-01-01 – 2026-12-31"
         rows: 97672
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_jcic_credit_age_tw:
     label: "聯徵中心按年齡與性別的信用統計"
     topics: ["economic", "負債", "信貸", "聯徵中心"]
@@ -716,7 +746,7 @@ youth_datasets:
         period: "2021-12-01 – 2025-12-31"
         rows: 210
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
       jcic_credit_balance:
         value_type: sum
         unit: "千元"
@@ -724,7 +754,7 @@ youth_datasets:
         period: "2021-12-01 – 2025-12-31"
         rows: 210
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
       jcic_credit_borrower_count:
         value_type: count
         unit: "人"
@@ -732,7 +762,7 @@ youth_datasets:
         period: "2021-12-01 – 2025-12-31"
         rows: 210
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
       jcic_credit_case_count:
         value_type: count
         unit: "件"
@@ -740,7 +770,7 @@ youth_datasets:
         period: "2021-12-01 – 2025-12-31"
         rows: 210
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
       jcic_credit_mean_case_amount:
         value_type: mean
         unit: "千元/件"
@@ -748,7 +778,7 @@ youth_datasets:
         period: "2021-12-01 – 2025-12-31"
         rows: 200
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
       jcic_overdue_loan_ratio:
         value_type: rate
         unit: "ratio"
@@ -756,7 +786,7 @@ youth_datasets:
         period: "2021-12-01 – 2025-12-31"
         rows: 193
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_job_vacancy_industry:
     label: "歷年各業廠商職缺數"
     topics: ["青年", "職缺", "行業", "主計總處"]
@@ -768,6 +798,7 @@ youth_datasets:
         area_levels: ["country"]
         period: "1997-02-01 – 2024-11-30"
         rows: 1156
+        genders: ["total"]
   youth_labor_participation_age_tw:
     label: "勞動力參與率（按年齡組別及性別）"
     topics: ["青年", "勞動力", "勞參率", "主計總處"]
@@ -780,7 +811,7 @@ youth_datasets:
         period: "1978-01-01 – 2026-12-31"
         rows: 2376
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       labor_force_count_by_age:
         value_type: count
         unit: "千人"
@@ -788,7 +819,7 @@ youth_datasets:
         period: "1978-01-01 – 2026-12-31"
         rows: 2376
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       labor_force_participation_rate_by_age:
         value_type: rate
         unit: "%"
@@ -796,7 +827,7 @@ youth_datasets:
         period: "1978-01-01 – 2026-12-31"
         rows: 2376
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_labor_statistics_age_tw:
     label: "青年（15至29歲）勞動統計"
     topics: ["青年", "勞動統計", "勞動部"]
@@ -809,7 +840,7 @@ youth_datasets:
         period: "1978-01-01 – 2026-07-31"
         rows: 6996
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_employed_count:
         value_type: count
         unit: "千人"
@@ -817,7 +848,7 @@ youth_datasets:
         period: "1978-01-01 – 2026-07-31"
         rows: 6996
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_employment_rate:
         value_type: rate
         unit: "%"
@@ -825,7 +856,7 @@ youth_datasets:
         period: "1978-01-01 – 2026-07-31"
         rows: 6996
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_labor_force_count:
         value_type: count
         unit: "千人"
@@ -833,7 +864,7 @@ youth_datasets:
         period: "1978-01-01 – 2026-07-31"
         rows: 6996
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_labor_force_participation_rate:
         value_type: rate
         unit: "%"
@@ -841,7 +872,7 @@ youth_datasets:
         period: "1978-01-01 – 2026-07-31"
         rows: 6996
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_non_labor_force_count:
         value_type: count
         unit: "千人"
@@ -849,7 +880,7 @@ youth_datasets:
         period: "1978-01-01 – 2026-07-31"
         rows: 6996
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_unemployed_count:
         value_type: count
         unit: "千人"
@@ -857,7 +888,7 @@ youth_datasets:
         period: "1978-01-01 – 2026-07-31"
         rows: 6996
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_unemployment_rate:
         value_type: rate
         unit: "%"
@@ -865,7 +896,7 @@ youth_datasets:
         period: "1978-01-01 – 2026-07-31"
         rows: 6996
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_marital_status_age_ntpc:
     label: "新北市現住人口婚姻狀況（按年齡別、性別）"
     topics: ["婚姻", "主計處"]
@@ -878,7 +909,7 @@ youth_datasets:
         period: "2000-01-01 – 2024-12-31"
         rows: 7500
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       resident_marital_status_same_sex_count:
         value_type: count
         unit: "人"
@@ -886,7 +917,7 @@ youth_datasets:
         period: "2000-01-01 – 2024-12-31"
         rows: 3000
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_marriage_age_ntpc:
     label: "新北市結婚與離婚人數（按年齡組、性別、行政區）"
     topics: ["結婚", "離婚", "戶政司"]
@@ -899,7 +930,7 @@ youth_datasets:
         period: "2022-01-01 – 2025-12-31"
         rows: 12664
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
       marriage_count:
         value_type: count
         unit: "人"
@@ -907,7 +938,7 @@ youth_datasets:
         period: "2020-01-01 – 2025-12-31"
         rows: 26134
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_mental_health_antidepressant_tw:
     label: "健保抗憂鬱藥物使用人數年齡結構"
     topics: ["mental-health", "NHI"]
@@ -920,12 +951,14 @@ youth_datasets:
         period: "2005-01-01 – 2024-12-31"
         rows: 100
         has_age_bands: true
+        genders: ["total"]
       antidepressant_user_total_count:
         value_type: count
         unit: "人"
         area_levels: ["city", "country"]
         period: "2005-01-01 – 2024-12-31"
         rows: 33
+        genders: ["total"]
   youth_minimum_wage_tw:
     label: "歷年基本工資／最低工資基準指數"
     topics: ["青年", "基本工資", "最低工資", "薪資基準", "勞動部"]
@@ -937,12 +970,14 @@ youth_datasets:
         area_levels: ["country"]
         period: "1992-08-01 – 2026-01-01"
         rows: 23
+        genders: ["total"]
       minimum_wage_monthly_index:
         value_type: index
         unit: "index_2021=100"
         area_levels: ["country"]
         period: "1956-01-01 – 2026-01-01"
         rows: 34
+        genders: ["total"]
   youth_moi_indigenous_single_age:
     label: "新北市原住民人口數單一年齡組（內政部統計）"
     topics: ["原住民", "人口"]
@@ -955,7 +990,7 @@ youth_datasets:
         period: "2022-01-01 – 2022-12-31"
         rows: 606
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_moi_population_single_age:
     label: "新北市人口數單一年齡組（內政部統計）"
     topics: ["人口", "戶政司"]
@@ -968,7 +1003,7 @@ youth_datasets:
         period: "2020-01-01 – 2020-10-31"
         rows: 3333
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_naturalized_population_age_ntpc:
     label: "新北市歸化及定居取得國籍人口（單齡年齡、來源、性別、行政區）"
     topics: ["新住民", "歸化", "定居", "戶政司"]
@@ -981,7 +1016,7 @@ youth_datasets:
         period: "2023-01-01 – 2024-12-31"
         rows: 8895
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_oas_age_structure_ntpc:
     label: "新北市現住人口之年齡結構（OAS 11844）"
     topics: ["年齡結構", "oas.bas.ntpc.gov.tw"]
@@ -993,14 +1028,14 @@ youth_datasets:
         area_levels: ["city"]
         period: "2000-01-01 – 2025-12-31"
         rows: 78
-        has_gender: true
+        genders: ["female", "male", "total"]
       resident_age_structure_dependency_ratio:
         value_type: rate
         unit: "人/百人"
         area_levels: ["city"]
         period: "2000-01-01 – 2025-12-31"
         rows: 234
-        has_gender: true
+        genders: ["female", "male", "total"]
       resident_age_structure_percentage:
         value_type: rate
         unit: "%"
@@ -1008,7 +1043,7 @@ youth_datasets:
         period: "2000-01-01 – 2025-12-31"
         rows: 156
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       resident_age_structure_population_count:
         value_type: count
         unit: "人"
@@ -1016,7 +1051,7 @@ youth_datasets:
         period: "2000-01-01 – 2025-12-31"
         rows: 156
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_oas_education_age_ntpc:
     label: "新北市十五歲以上現住人口教育程度（OAS 11845）"
     topics: ["教育"]
@@ -1029,14 +1064,14 @@ youth_datasets:
         period: "1998-01-01 – 2025-12-31"
         rows: 27720
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       education_attainment_summary_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "1998-01-01 – 2025-12-31"
         rows: 2520
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_oas_household_dynamics_ntpc:
     label: "新北市戶籍動態（OAS 11842）"
     topics: ["戶籍動態", "oas.bas.ntpc.gov.tw"]
@@ -1048,19 +1083,21 @@ youth_datasets:
         area_levels: ["city"]
         period: "1998-01-01 – 2025-12-31"
         rows: 50
+        genders: ["total"]
       household_dynamics_person_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "1998-01-01 – 2025-12-31"
         rows: 1050
-        has_gender: true
+        genders: ["female", "male", "total"]
       household_dynamics_rate:
         value_type: rate
         unit: "‰"
         area_levels: ["city"]
         period: "1998-01-01 – 2025-12-31"
         rows: 200
+        genders: ["total"]
   youth_oas_marital_age_ntpc:
     label: "新北市現住人口婚姻狀況（OAS 11848）"
     topics: ["婚姻"]
@@ -1073,7 +1110,7 @@ youth_datasets:
         period: "2019-01-01 – 2025-12-31"
         rows: 2100
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
       resident_marital_status_same_sex_count:
         value_type: count
         unit: "人"
@@ -1081,7 +1118,7 @@ youth_datasets:
         period: "2019-01-01 – 2025-12-31"
         rows: 840
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_oas_population_age_ntpc:
     label: "新北市現住人口之年齡分配（統計資料庫查詢平台）"
     topics: ["人口", "年齡別", "oas.bas.ntpc.gov.tw", "命題指定平台"]
@@ -1094,7 +1131,7 @@ youth_datasets:
         period: "2000-01-01 – 2025-12-31"
         rows: 1716
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_occupational_injury_age_ntpc:
     label: "職業傷害保險給付人次（按年齡組與性別）"
     topics: ["職業安全", "職災", "勞保"]
@@ -1107,7 +1144,7 @@ youth_datasets:
         period: "2019-01-01 – 2025-12-31"
         rows: 27216
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_pop_single_age:
     label: "新北市單齡（各歲）人口統計"
     topics: ["人口", "單齡人口", "戶政司"]
@@ -1120,7 +1157,7 @@ youth_datasets:
         period: "2018-01-01 – 2026-12-31"
         rows: 81810
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_rental_market_ntpc:
     label: "新北市租賃實價登錄租金中位數（行政區、月份）"
     topics: ["居住", "租賃實價登錄", "租金"]
@@ -1132,6 +1169,7 @@ youth_datasets:
         area_levels: ["district"]
         period: "2025-03-01 – 2026-07-31"
         rows: 361
+        genders: ["total"]
   youth_salary_initial_by_education:
     label: "初任人員薪資（按教育程度別、特性別）"
     topics: ["青年", "初任薪資", "教育程度", "勞動部"]
@@ -1143,21 +1181,21 @@ youth_datasets:
         area_levels: ["country"]
         period: "2025-01-01 – 2025-12-31"
         rows: 201
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_salary_initial_median_by_education:
         value_type: median
         unit: "元"
         area_levels: ["country"]
         period: "2025-01-01 – 2025-12-31"
         rows: 57
-        has_gender: true
+        genders: ["female", "male", "total"]
       youth_salary_initial_share_by_education:
         value_type: rate
         unit: "%"
         area_levels: ["country"]
         period: "2025-01-01 – 2025-12-31"
         rows: 215
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_salary_initial_history_pdf:
     label: "初任人員薪資歷年（按教育程度，官方 PDF）"
     topics: ["青年", "初任薪資", "教育程度", "歷年", "勞動部"]
@@ -1169,18 +1207,21 @@ youth_datasets:
         area_levels: ["country"]
         period: "2021-01-01 – 2024-12-31"
         rows: 24
+        genders: ["total"]
       youth_salary_initial_median_by_education:
         value_type: median
         unit: "元"
         area_levels: ["country"]
         period: "2021-01-01 – 2024-12-31"
         rows: 22
+        genders: ["total"]
       youth_salary_initial_share_by_education:
         value_type: rate
         unit: "%"
         area_levels: ["country"]
         period: "2021-01-01 – 2024-12-31"
         rows: 24
+        genders: ["total"]
   youth_sexual_assault_perpetrator_age_ntpc:
     label: "新北市性侵害通報案件加害者（按年齡別、性別）"
     topics: ["性侵害", "加害者", "主計處"]
@@ -1193,21 +1234,21 @@ youth_datasets:
         period: "2006-01-01 – 2024-12-31"
         rows: 380
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
       sexual_assault_perpetrator_total_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2006-01-01 – 2024-12-31"
         rows: 38
-        has_gender: true
+        genders: ["female", "male"]
       sexual_assault_perpetrator_unknown_gender_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2006-01-01 – 2024-12-31"
         rows: 19
-        has_gender: true
+        genders: ["unknown"]
   youth_sexual_assault_victim_age_ntpc:
     label: "新北市性侵害通報案件被害者（按年齡別、性別）"
     topics: ["性侵害", "被害者", "主計處"]
@@ -1220,14 +1261,14 @@ youth_datasets:
         period: "2006-01-01 – 2024-12-31"
         rows: 380
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
       sexual_assault_victim_total_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2006-01-01 – 2024-12-31"
         rows: 38
-        has_gender: true
+        genders: ["female", "male"]
   youth_skill_certification_age_tw:
     label: "技術士技能檢定合格發證數－按級別、性別及年齡分"
     topics: ["skills", "certification", "勞動部"]
@@ -1240,7 +1281,7 @@ youth_datasets:
         period: "2021-01-01 – 2025-12-31"
         rows: 240
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_sport_behavior_age_tw:
     label: "運動城市調查各縣市規律運動現況"
     topics: ["health", "sport", "體育署"]
@@ -1253,6 +1294,7 @@ youth_datasets:
         period: "2013-01-01 – 2023-12-31"
         rows: 154
         has_age_bands: true
+        genders: ["total"]
   youth_stat_area_education_age_ntpc:
     label: "新北市統計區十五歲以上人口年齡、性別與教育程度"
     topics: ["教育", "統計區"]
@@ -1265,7 +1307,7 @@ youth_datasets:
         period: "2024-12-01 – 2024-12-31"
         rows: 442860
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_stat_area_population_age_ntpc:
     label: "新北市統計區五歲年齡組性別人口統計"
     topics: ["人口", "統計區"]
@@ -1278,7 +1320,7 @@ youth_datasets:
         period: "2024-12-01 – 2024-12-31"
         rows: 84546
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_stat_area_school_age_ntpc:
     label: "新北市統計區單歲年齡組學齡人口統計"
     topics: ["人口", "統計區"]
@@ -1291,7 +1333,7 @@ youth_datasets:
         period: "2024-08-01 – 2024-08-31"
         rows: 108702
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_student_loan_tw:
     label: "新增個人就學貸款月資料"
     topics: ["economic", "就學貸款", "聯徵中心"]
@@ -1303,18 +1345,21 @@ youth_datasets:
         area_levels: ["country"]
         period: "2012-01-01 – 2026-04-30"
         rows: 172
+        genders: ["total"]
       student_loan_applicant_count:
         value_type: count
         unit: "人"
         area_levels: ["country"]
         period: "2012-01-01 – 2026-04-30"
         rows: 172
+        genders: ["total"]
       student_loan_mean_amount:
         value_type: mean
         unit: "千元/人"
         area_levels: ["country"]
         period: "2012-01-01 – 2026-04-30"
         rows: 172
+        genders: ["total"]
   youth_suicide_death_age_ntpc:
     label: "新北市自殺死亡數（按官方五齡與性別）"
     topics: ["健康", "自殺", "死亡", "五齡"]
@@ -1327,7 +1372,7 @@ youth_datasets:
         period: "2008-01-01 – 2025-12-31"
         rows: 609
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
   youth_suicide_report_old_ntpc:
     label: "新北市自殺通報人數（98年以前，按年齡組、性別）"
     topics: ["自殺通報", "歷史"]
@@ -1340,14 +1385,14 @@ youth_datasets:
         period: "2007-01-01 – 2009-12-31"
         rows: 54
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male"]
       suicide_reported_total_count:
         value_type: count
         unit: "人"
         area_levels: ["city"]
         period: "2007-01-01 – 2009-12-31"
         rows: 6
-        has_gender: true
+        genders: ["female", "male"]
   youth_traffic_fatal_ntpc:
     label: "新北市A1道路交通事故當事者（單齡年齡、車種、行政區）"
     topics: ["交通事故", "A1", "單齡年齡", "機車"]
@@ -1359,12 +1404,14 @@ youth_datasets:
         area_levels: ["district"]
         period: "2020-01-01 – 2025-12-31"
         rows: 126
+        genders: ["total"]
       traffic_fatal_death_count:
         value_type: count
         unit: "人"
         area_levels: ["district"]
         period: "2020-01-01 – 2025-12-31"
         rows: 126
+        genders: ["total"]
       traffic_fatal_party_count:
         value_type: count
         unit: "人"
@@ -1372,7 +1419,7 @@ youth_datasets:
         period: "2020-01-01 – 2025-12-31"
         rows: 3523
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "other", "total"]
   youth_traffic_injury_ntpc:
     label: "新北市A2道路交通事故受傷當事者（單齡年齡、性別、受傷程度、車種、行政區）"
     topics: ["交通事故", "A2", "受傷", "單齡年齡"]
@@ -1385,7 +1432,7 @@ youth_datasets:
         period: "2020-01-01 – 2025-12-31"
         rows: 238795
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "other", "total"]
   youth_unemployment_rate_age:
     label: "失業率（按年齡組別、性別及教育程度）"
     topics: ["青年", "失業率", "主計總處"]
@@ -1398,19 +1445,21 @@ youth_datasets:
         period: "1978-01-01 – 2026-07-31"
         rows: 6729
         has_age_bands: true
+        genders: ["total"]
       youth_unemployment_rate_education:
         value_type: rate
         unit: "%"
         area_levels: ["country"]
         period: "1978-01-01 – 2026-07-31"
         rows: 4416
+        genders: ["total"]
       youth_unemployment_rate_gender:
         value_type: rate
         unit: "%"
         area_levels: ["country"]
         period: "1978-01-01 – 2026-07-31"
         rows: 1893
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_vocational_training_age_tw:
     label: "公立職訓機構自辦訓練結訓人數－按性別、年齡、教育程度、訓練機構及訓練性質分"
     topics: ["skills", "vocational-training", "勞動部"]
@@ -1423,7 +1472,7 @@ youth_datasets:
         period: "2011-01-01 – 2025-12-31"
         rows: 3960
         has_age_bands: true
-        has_gender: true
+        genders: ["female", "male", "total"]
   youth_youbike_station_ntpc:
     label: "新北市公共自行車站點即時車位"
     topics: ["mobility", "YouBike"]
@@ -1435,15 +1484,18 @@ youth_datasets:
         area_levels: ["district"]
         period: "2026-09-12 – 2026-09-12"
         rows: 1606
+        genders: ["total"]
       youbike_available_docks:
         value_type: count
         unit: "個"
         area_levels: ["district"]
         period: "2026-09-12 – 2026-09-12"
         rows: 1606
+        genders: ["total"]
       youbike_total_slots:
         value_type: count
         unit: "輛"
         area_levels: ["district"]
         period: "2026-09-12 – 2026-09-12"
         rows: 1606
+        genders: ["total"]
