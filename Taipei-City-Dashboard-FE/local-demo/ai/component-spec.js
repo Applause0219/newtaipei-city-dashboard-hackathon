@@ -158,6 +158,41 @@ export function validateSpec(spec, catalog) {
 			push("ratio 型別（百分比、指數）不可套用 transform.divide");
 		}
 
+		// 長表的三道守門。
+		//
+		// 長表（一個 x 對應很多列）跟寬表（一個 x 一列）在 SQL 上長得一樣，
+		// 但少了任何一項都會得到「看起來正常、實際上重複計算」的數字，
+		// 而且 PostgreSQL 一句話都不會說。
+		const tmeta = catalog.tables?.[spec.table] || {};
+		if (tmeta.long_table) {
+			if (!spec.aggregate) {
+				push(`${spec.table} 是長表（一個 ${spec.x?.column} 對應多列），`
+					+ "必須指定 aggregate，否則同一個項目會畫出多個點。");
+			}
+			// 不篩地理層級 = 把全國、全市、行政區的數字疊在一起
+			const filtered = new Set([
+				...(spec.filters || []).map((f) => f.column),
+				...spec.series.flatMap((sr) => (sr.filter ? [sr.filter.column] : [])),
+			]);
+			for (const need of tmeta.requires_filters || []) {
+				if (!filtered.has(need)) {
+					push(`${spec.table} 必須篩 ${need}`
+						+ `（${meta[need]?.note || "否則會重複計算"}）`);
+				}
+			}
+			// indicator_id 不是全域唯一：7 個跨資料集重複，
+			// 只篩 indicator_id 會把兩份資料的數字加在一起
+			for (const f of [...(spec.filters || []),
+			                 ...spec.series.map((sr) => sr.filter).filter(Boolean)]) {
+				if (f.column === "indicator_id" && "eq" in f
+				    && catalog.ambiguousIndicators?.has(f.eq)
+				    && !filtered.has("dataset_id")) {
+					push(`indicator_id "${f.eq}" 在多個資料集裡都有，`
+						+ "只篩它會把不同資料集的數字加在一起。請同時指定 dataset_id。");
+				}
+			}
+		}
+
 		// 聚合方式必須符合 catalog.yaml 的 agg_rules。
 		//
 		// 這條規則一直寫在 catalog.yaml 裡，但從來沒有程式在用它。

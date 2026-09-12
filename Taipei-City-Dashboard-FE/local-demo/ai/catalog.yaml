@@ -176,6 +176,100 @@ tables:
         label: 老化指數
         note: percent28 / percent24 × 100。臺北 2025 為 190.77。
 
+  youth_fact:
+    label: 新北市青年統計事實表（統一長表）
+    city: metrotaipei
+    # 長表：同一個 x 有很多列，沒有聚合就會畫出重複的點
+    long_table: true
+    # 不篩這些欄位會造成重複計算，而且 SQL 不會報錯
+    requires_filters: [area_level]
+    grain: >-
+      一列 = 一個資料集 × 一個指標 × 一個期間 × 一個年齡區間 ×
+      一種性別 × 一個地理單位。**這是長表**，同一個行政區有很多列，
+      所以一定要填 aggregate，否則同一區會畫出很多個點。
+    source: 新北市青年儀表板 ETL（70 個資料集 UNION 而成的 materialized view）
+    note: >-
+      這張表把 70 個資料集收在同一個結構裡，所以跨領域比較
+      （人口 × 就業 × 居住）只是同一張表上的一次 GROUP BY。
+
+      要看哪個指標是用 series[].filter 指定 indicator_id，不是換欄位——
+      數值欄位永遠是 value。
+
+      indicator_id 不是全域唯一：有 7 個跨資料集重複，那些必須同時
+      指定 dataset_id，否則會把兩份資料的數字加在一起。
+
+      area_level 一定要篩。不篩會讓「全國」「全市」「行政區」三個層級
+      的數字混在一起——那是資料重複計算，不是資料豐富。
+    fields:
+      dataset_id:
+        type: category
+        label: 資料集代號
+        groupable: true
+        note: 對應 catalog-youth.yaml 的 youth_datasets
+      indicator_id:
+        type: category
+        label: 指標代號
+        groupable: true
+        note: 可用的值見 catalog-youth.yaml
+      period_start:
+        type: date
+        label: 期間起
+        groupable: true
+      period_end:
+        type: date
+        label: 期間迄
+      period_type:
+        type: category
+        label: 期間型態
+        groupable: true
+        values: ["year", "calendar_year", "academic_year", "quarter", "month",
+                 "half_year", "year_end", "census", "election", "instant",
+                 "effective_date", "cumulative_month"]
+      age_lower:
+        type: count
+        label: 年齡下界（含）
+        note: 與 age_upper 一起界定組距。18-35 的篩選要用這兩欄，不要用 age_band_raw。
+      age_upper:
+        type: count
+        label: 年齡上界（含）
+      age_band_raw:
+        type: category
+        label: 來源原始的年齡標籤
+        note: 僅供顯示與追溯，不要拿來運算——各機關寫法不一致。
+      gender:
+        type: category
+        label: 性別
+        groupable: true
+        values: ["total", "male", "female", "other", "unknown"]
+        neutral_value: "total"
+        note: >-
+          問題沒提到性別時篩 total。要做男女對照，用 series[].filter
+          分別指定 male／female，不要放進最外層 filters。
+      area_code:
+        type: category
+        label: 地理代碼
+        groupable: true
+      area_level:
+        type: category
+        label: 地理層級
+        groupable: true
+        values: ["nation", "country", "city", "district", "statistical_area_2"]
+        note: 必須篩。不篩會讓不同層級的數字疊加。做分區圖用 district。
+      value:
+        type: count
+        label: 數值
+        note: >-
+          這一欄的型別其實由該指標的 value_type 決定（見 catalog-youth.yaml）：
+          count／sum 可以加總，rate／index／mean／median 只能取平均。
+      unit:
+        type: category
+        label: 單位
+      value_type:
+        type: category
+        label: 數值型態
+        groupable: true
+        values: ["count", "sum", "rate", "index", "mean", "median"]
+
   city_age_distribution_taipei:
     label: 臺北市現住人口年齡分配
     city: taipei

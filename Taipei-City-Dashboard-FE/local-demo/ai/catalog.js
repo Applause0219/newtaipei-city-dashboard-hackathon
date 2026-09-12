@@ -11,7 +11,7 @@
 // 走 psql 而不是 pg 套件，是為了不增加相依——比賽當天少一件會出錯的事。
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -35,16 +35,41 @@ async function psqlJSON(sql, db) {
 	return JSON.parse(stdout.trim() || "[]");
 }
 
-/** information_schema：表名 → 欄位陣列 */
+/**
+ * 表名 → 欄位陣列。
+ *
+ * 走 pg_attribute 而不是 information_schema.columns：
+ * 後者**看不到 materialized view**，而 youth_fact 正是 matview。
+ * 用 information_schema 會讓它被誤判成「資料表不存在」，
+ * 而錯誤訊息會叫你去檢查表名——方向完全錯。
+ *
+ * relkind: r=一般表, v=view, m=matview, p=分割表, f=外部表
+ */
 async function loadSchema(db) {
 	const rows = await psqlJSON(
-		`SELECT table_name AS tbl, array_agg(column_name ORDER BY ordinal_position) AS cols
-		 FROM information_schema.columns
-		 WHERE table_schema = 'public'
-		 GROUP BY table_name`, db);
+		`SELECT c.relname AS tbl,
+		        array_agg(a.attname ORDER BY a.attnum) AS cols
+		 FROM pg_class c
+		 JOIN pg_namespace n ON n.oid = c.relnamespace
+		 JOIN pg_attribute a ON a.attrelid = c.oid
+		 WHERE n.nspname = 'public'
+		   AND c.relkind IN ('r','v','m','p','f')
+		   AND a.attnum > 0 AND NOT a.attisdropped
+		 GROUP BY c.relname`, db);
 	const out = {};
 	for (const r of rows) out[r.tbl] = r.cols;
 	return out;
+}
+
+/**
+ * catalog-youth.yaml：youth_fact 的 151 組（資料集 × 指標）。
+ * 由 tools/gen-youth-catalog.mjs 從資料庫產生，不手寫——
+ * 手寫會寫錯指標名，也會在新增 DAG 後腐爛。
+ */
+function loadYouth() {
+	const f = path.join(DIR, "catalog-youth.yaml");
+	if (!existsSync(f)) return null;
+	return yaml.load(readFileSync(f, "utf8"));
 }
 
 /** catalog.yaml：解開 same_fields_as 的繼承 */
@@ -108,14 +133,59 @@ export async function loadCatalog(db) {
 		} catch { /* 查不到就不寫，不要因此讓整個 catalog 失敗 */ }
 	}));
 
+	// youth_fact 的指標目錄。掛在回傳值上而不是塞進 tables，
+	// 因為它不是「欄位」而是「一個欄位的可能取值」——形狀不同。
+	const youth = loadYouth();
+
 	// validateSpec 只認 catalog 有說明過、且資料庫真的有的欄位
 	const columns = Object.fromEntries(Object.entries(tables).map(([n, t]) => [n, Object.keys(t.fields)]));
-	return { tables, columns, aggRules: doc.agg_rules || {}, issues };
+	return {
+		tables,
+		columns,
+		aggRules: doc.agg_rules || {},
+		youthDatasets: youth?.youth_datasets || null,
+		ambiguousIndicators: new Set(youth?.ambiguous_indicators || []),
+		issues,
+	};
 }
 
 /** 執行查詢，回傳物件陣列。純讀取用途。 */
 export async function query(sql, db) {
 	return psqlJSON(sql, db);
+}
+
+/**
+ * youth_fact 的指標清單，序列化成給模型看的文字。
+ *
+ * 用精簡的一行一指標，不是完整 YAML：151 組如果照 YAML 全貼是 1,500 行，
+ * 把 prompt 撐大四倍卻沒有多給什麼——模型要的是「有哪些指標、是什麼、
+ * 能不能加總」，不是每一組的列數。
+ *
+ * 歧義指標標上 ⚠，模型才知道要同時指定 dataset_id。
+ */
+export function youthIndicatorsForPrompt(cat) {
+	if (!cat.youthDatasets) return "";
+	const out = ["## youth_fact 可用的指標", ""];
+	out.push("格式：indicator_id  [value_type]  單位  ← 資料集中文名");
+	out.push("⚠ 標記代表該 indicator_id 跨資料集重複，必須同時指定 dataset_id。");
+	out.push("");
+	for (const [ds, d] of Object.entries(cat.youthDatasets)) {
+		const topics = d.topics?.length ? `（${d.topics.join("、")}）` : "";
+		out.push(`### ${ds} — ${d.label}${topics}`);
+		for (const [ind, i] of Object.entries(d.indicators || {})) {
+			const warn = cat.ambiguousIndicators?.has(ind) ? " ⚠" : "";
+			const bits = [
+				`  ${ind}${warn}`,
+				`[${i.value_type}]`,
+				i.unit ? `${i.unit}` : "",
+				`${i.area_levels.join("/")}`,
+				`${i.period}`,
+			].filter(Boolean);
+			out.push(bits.join("  "));
+		}
+		out.push("");
+	}
+	return out.join("\n");
 }
 
 /** 序列化成給模型看的文字。只有這裡的東西，模型才可能挑到。 */

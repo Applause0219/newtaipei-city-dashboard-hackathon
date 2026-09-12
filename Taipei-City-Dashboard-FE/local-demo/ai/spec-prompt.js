@@ -5,7 +5,7 @@
 //
 // 這裡刻意只告訴模型「有哪些表、哪些欄位、各是什麼意思」，不給它 SQL 範例——
 // 給了 SQL 範例，它就會開始改寫 SQL；我們要的是它只輸出 spec。
-import { catalogForPrompt } from "./catalog.js";
+import { catalogForPrompt, youthIndicatorsForPrompt } from "./catalog.js";
 import { chartOptionsForPrompt } from "./component-spec.js";
 
 /** ComponentSpec 的形狀，直接寫進 prompt 讓模型照著填 */
@@ -108,6 +108,7 @@ export function buildSpecPrompt(catalog, question) {
 		"## 可用的資料目錄",
 		"",
 		catalogForPrompt(catalog),
+		youthIndicatorsForPrompt(catalog),
 		"## 使用者的問題",
 		question,
 	].join("\n");
