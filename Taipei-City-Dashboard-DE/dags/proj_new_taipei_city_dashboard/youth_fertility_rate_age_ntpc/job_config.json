@@ -1,0 +1,47 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_fertility_rate_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "1 19 15 * *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "生育率",
+      "年齡別生育率",
+      "有偶婦女",
+      "率",
+      "戶政司",
+      "行政區"
+    ],
+    "description": "New Taipei district fertility rates from MOI RIS ODRP116, with ODRP115 mid-year currently married women counts and shares as denominator context. Rates are retained exactly as published and no rate is summed or population-scaled.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_fertility_rate_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市生育率與年中有偶婦女（按年齡、行政區）",
+    "airflow_update_freq": "monthly",
+    "source": "https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP116/{roc_year}; https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP115/{roc_year}",
+    "source_type": "內政部戶政司 RIS OpenData API (ODRP116/ODRP115)",
+    "source_dept": "內政部戶政司",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "ODRP116提供新北市各行政區總生育率、一般生育率及年齡別生育率；ODRP115提供年中有偶婦女人數與其占同年齡婦女比例。實測兩者均只有民國113至114資料，民國113新北缺板橋區。總生育率來源值為乘1000後的數字，例如民國114板橋560；年齡別生育率為每千名同年齡婦女。",
+    "etl_description": "Probe ROC years using the RIS responseCode, not HTTP status: OD-0102-S is a successful HTTP 200 no-data response. Normalize the English and Chinese schemas by semantic aliases because ROC 113 uses Chinese column names. Keep ODRP116 rate cells and ODRP115 count/share cells at district grain. The TFR identity TFR = 5 times the sum of seven five-year ASFR cells is checked for every district/year; no fertility rate is added across districts or ages, and no 18-35 rate is materialized. A three-times-median annual scale guard is applied separately to ODRP116 rate medians and ODRP115 count totals. The known ROC 113 missing Banqiao district is retained only with source_incomplete metadata; unknown missing districts fail loudly.",
+    "sensitivity": "public"
+  }
+}

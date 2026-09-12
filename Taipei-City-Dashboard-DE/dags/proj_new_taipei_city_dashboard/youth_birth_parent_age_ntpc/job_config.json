@@ -1,0 +1,47 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_birth_parent_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "7 19 15 * *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "出生",
+      "生父年齡",
+      "生母年齡",
+      "交叉表",
+      "戶政司",
+      "行政區"
+    ],
+    "description": "New Taipei district birth counts by father's age, mother's age, baby sex and registration/occurrence basis from MOI RIS ODRP064/ODRP065. Father's age is the fact-table age subject; baby sex and mother's age remain breakdown dimensions.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_birth_parent_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市嬰兒出生數（按生父、生母年齡及嬰兒性別）",
+    "airflow_update_freq": "monthly",
+    "source": "https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP064/{roc_year}; https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP065/{roc_year}",
+    "source_type": "內政部戶政司 RIS OpenData API (ODRP064/ODRP065)",
+    "source_dept": "內政部戶政司",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "ODRP064為按登記日期、ODRP065為按發生日期的嬰兒出生交叉表，按行政區、生父年齡、生母年齡及嬰兒性別提供出生數。本DAG主年齡欄選生父年齡，生母年齡與嬰兒性別放breakdown。實測ODRP064有民國110至113，ODRP065有110、112至114；兩資料集民國113都少同一個新北交叉格，ODRP064民國114另有截斷非法JSON而明確排除。",
+    "etl_description": "Probe both RIS datasets from ROC 90 forward until two post-data OD-0102-S years. Handle Chinese and English schemas through role aliases: ODRP064 ROC 113 uses 行政區域代碼, while ODRP065 ROC 113 uses 區域別代碼. Canonicalize the nine-digit district code to the existing eight-digit New Taipei district codes. Parse every father and mother age label into integer bounds and fail on unknown labels. Validate the complete matrix, allowing only the measured ROC 113 missing cell in each dataset through KNOWN_INCOMPLETE_PERIODS; do not impute it. Group only after filling required dimensions, reconcile the cross-tab input total to the pre-filter output total, then remove zero cells and record emitted_rows and emitted_rows_nonzero. Father's age is a five-year/open group, so 18-35 is apportioned at query time; no split is materialized. ROC 114 ODRP064 is an explicitly known bad truncated response and is excluded.",
+    "sensitivity": "public"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_marital_status_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 21 20 4 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "婚姻",
+      "年齡",
+      "性別",
+      "主計處"
+    ],
+    "description": "New Taipei City resident marital status counts by age band and gender, from the New Taipei gender-statistics open dataset. The 15-19 and 35-39 bands cross the fixed 18-35 youth boundary, so youth conversion is apportioned rather than exact.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_marital_status_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市現住人口婚姻狀況（按年齡別、性別）",
+    "airflow_update_freq": "yearly",
+    "source": "https://data.ntpc.gov.tw/datasets/2c5e1515-2b2f-4334-a53e-27fa4adcdbec",
+    "source_type": "新北市資料開放平臺 data.ntpc.gov.tw",
+    "source_dept": "新北市政府主計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "資料集提供2000至2024年新北市現住人口按年齡別、婚姻狀況及性別的計數，另含同性婚姻子項。DAG保留來源的年齡組與合計列，行政區層級為新北市全市65000。",
+    "etl_description": "Fetch page=0,size=5000 until an empty page, always with a browser User-Agent. Normalize itemvalueN and item valueN aliases by role, parse age labels into integer bounds, and raise on an unknown label. Emit total/male/female source cells once; same-sex fields are separate subset indicators and must not be added to primary marital-status totals. Reconcile every source cell and assert each primary status total equals its male plus female components. A yearly all-population total is checked against the other-year median; a more-than-threefold scale change raises instead of entering the database. The 18-35 classification is apportioned because 15-19 and 35-39 cross the boundary; no rate or population scaling is applied in ETL.",
+    "sensitivity": "public"
+  }
+}

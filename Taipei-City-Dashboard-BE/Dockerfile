@@ -5,6 +5,12 @@ ENV HF_HOME=/root/.cache/huggingface
 WORKDIR /w
 
 # 安裝匯出所需套件
+# The model is exported and served with CPU ONNX Runtime. Install the CPU
+# PyTorch wheel so a normal Docker host does not pull the CUDA runtime stack.
+RUN pip install --no-cache-dir \
+      torch==2.9.0 \
+      --index-url https://download.pytorch.org/whl/cpu
+
 RUN pip install --no-cache-dir \
       "transformers>=4.44" \
       "optimum[onnxruntime]>=1.20.0" \

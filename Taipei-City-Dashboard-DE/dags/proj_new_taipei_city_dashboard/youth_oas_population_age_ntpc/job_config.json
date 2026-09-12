@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_oas_population_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 18 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "人口",
+      "年齡別",
+      "oas.bas.ntpc.gov.tw",
+      "命題指定平台"
+    ],
+    "description": "New Taipei City resident population by five-year age band and gender, 2000-2025, from the New Taipei City statistics query platform (oas.bas.ntpc.gov.tw) - the first source named in the challenge brief. The platform is ASP.NET WebForms with no API; the query is driven by replaying its own postback with both complex dimensions supplied.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_oas_population_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市現住人口之年齡分配（統計資料庫查詢平台）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://oas.bas.ntpc.gov.tw/DgbasWeb/Page/StatFile2.aspx?Mode=3&CateNo=121&ParentNo=null12102",
+    "source_type": "oas.bas.ntpc.gov.tw 新北市政府統計資料庫查詢平台（ASP.NET WebForms，無 API）",
+    "source_dept": "新北市政府主計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "新北市現住人口按五歲年齡組（總計、0_4歲至100歲以上共22組）及性別（計/男/女）統計，涵蓋民國89年至114年（西元2000-2025）共26個年度，資料為新北市全市。來源為命題文件明列的第一個建議來源，是ASP.NET WebForms平台，沒有開放API。本DAG以重放該平台自身的postback查詢取得數值。已與youth_pop_single_age（內政部戶政司RIS單齡人口）交叉驗證：2023-2025年總人口以及2025年20-24、25-29、30-34三個年齡組逐一完全相同，差異為0。18-35歲需分攤（apportioned），因來源為五歲組且兩端跨越命題邊界。",
+    "etl_description": "Enter the report through the platform's own navigation postback (__EVENTTARGET=lbtGUID, __EVENTARGUMENT=11843) on a single requests.Session so the VIEWSTATE stays bound, then read the report page's own selects to discover the available dimensions and periods rather than hardcoding them. The critical detail: the report page's JavaScript builds axX as '[Measures]' plus, for each lisComplex list, a semicolon and the first option value truncated to five characters, and builds axCode as each list's selected values joined by semicolons followed by the area code. Report 11843 exposes two complex dimensions - lisComplex1 is the age band (P0203 prefix) and lisComplex2 is gender (P0204 prefix). Earlier attempts supplied only the age dimension, so axX lacked ';P0204' and axCode lacked the gender segment; the server then returned a grid whose every value was the placeholder '...'. Supplying both dimensions returns real numbers. Each of the 26 periods is queried in turn; the result grid's first cell concatenates year, area and the first value, so the trailing number is split out before parsing. The parser asserts that the value count equals age bands times genders and raises otherwise, so a layout change fails loudly instead of silently misaligning cells. A second check asserts that each period's overall total equals the sum of its age bands.",
+    "sensitivity": "public"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_death_rate_single_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "3 19 15 * *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "死亡率",
+      "單齡",
+      "性別",
+      "率",
+      "戶政司"
+    ],
+    "description": "New Taipei City mortality rates by sex and single age from MOI RIS ODRP117. The source age is single-year (with the final 100+ open group), so ages 18-35 are exact; mortality rates are retained and never summed.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_death_rate_single_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市人口死亡率（按性別及單一年齡）",
+    "airflow_update_freq": "monthly",
+    "source": "https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP117/{roc_year}",
+    "source_type": "內政部戶政司 RIS OpenData API (ODRP117)",
+    "source_dept": "內政部戶政司",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "各縣市人口死亡率按性別及單一年齡分。本DAG只取新北市（來源代碼65000000，契約統一為65000）及民國113至114。死亡率單位為每千人，來源最後一格100代表100歲以上。",
+    "etl_description": "Probe ROC years with RIS response codes; HTTP 200 plus OD-0102-S means no data. Normalize Chinese ROC 113 and English ROC 114 schemas by semantic aliases. Filter county 新北市 and require source city code 65000000. Validate every age/sex cell against the expected 0-99 plus 100+ grid, allowing only the measured ROC 113 missing male 100+ cell; do not impute it. Store age 0-99 as integer single-age intervals and 100 as (100,NULL). Reconcile source and output cell-by-cell, run a three-times-median rate scale guard, and do not sum rates or materialize an 18-35 rate.",
+    "sensitivity": "public"
+  }
+}

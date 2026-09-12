@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_disability_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 20 6 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "New-Taipei-City",
+      "rights",
+      "disability",
+      "age"
+    ],
+    "description": "New Taipei City year-end persons with disabilities by age band.",
+    "default_args": {
+      "owner": "airflow",
+      "email": [
+        "DEFAULT_EMAIL_LIST"
+      ],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_disability_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "定額進用身心障礙者實際進用人數－按原住民、性別、年齡及地區別分",
+    "airflow_update_freq": "yearly",
+    "source": "https://data.gov.tw/dataset/146537",
+    "source_type": "勞動部 OAS JSON",
+    "source_dept": "勞動部",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "各縣市每年底依身心障礙者權益保障法定額進用之身心障礙者，按性別與年齡別統計實際進用人數。",
+    "etl_description": "讀取勞動部官方 JSON 資源，依項目別解析民國年與縣市，保留新北市年齡組原始計數。來源的年齡組與男女人數不是交叉表，因此 age rows 的 gender 固定為 total，不把男女人數分配到年齡組。18-35 需處理 15-19 與 35-39 的邊界，僅標記為查詢階段可分攤；ETL 不固化分攤結果。每年年齡組加總必須等於來源總計，並執行跨年度尺度防護。",
+    "sensitivity": "public"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_marriage_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 23 20 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "結婚",
+      "離婚",
+      "年齡",
+      "戶政司",
+      "行政區"
+    ],
+    "description": "New Taipei City marriage and divorce participant counts by five-year age band, sex, marriage type, original nationality and education, from MOI Household Registration open data ODRP069 and ODRP071. The raw bands support an apportioned 18-35 interpretation with single-age population weights, but no derived 18-35 value is written here; confidence is low because the source is an event/person count rather than a population count.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 600
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_marriage_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市結婚與離婚人數（按年齡組、性別、行政區）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP069/{roc_year} ; https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP071/{roc_year}",
+    "source_type": "內政部戶政司 RIS OpenData API (ODRP069 / ODRP071)",
+    "source_dept": "內政部戶政司",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "ODRP069為按發生日期分的結婚人數，ODRP071為按發生日期分的離婚／終止結婚人數；兩者都按行政區、婚姻類型、性別、原屬國籍、教育程度與5歲年齡組提供資料。本DAG以indicator_id區分 marriage_count 與 divorce_count，保留來源年齡組，不把5歲組誤當單齡。18至35需以同區、同年、同性別的單齡人口權重分攤15至19及35至39兩個邊界組；由於被分攤的是事件／人數，不是人口，18至35結果屬低信心 apportioned。實測結婚涵蓋民國109至114年（西元2020至2025），離婚涵蓋民國111至114年（西元2022至2025）。",
+    "etl_description": "Fetch ODRP069 and ODRP071 with a browser User-Agent, COUNTY=新北市, and all responseData pages. Discover each dataset in both directions from ROC 114 and stop only after two consecutive OD-0102-S no-data years. RIS no-data is HTTP 200 plus OD-0102-S, so responseCode is authoritative. Normalise fields by role aliases: ODRP069 uses year/number_of_marry in most observed years but statistic_yyy/marry_count in ROC 113; ODRP071 uses statistic_yyy/divorce_count. Parse every age label into integer lower/upper bounds and raise on an unknown label. Fill missing dimension keys before groupby and use dropna=False so pandas cannot silently drop a category. Aggregate duplicate source rows by district, age band, sex, marriage type, nation, education and basis, then reconcile the aggregated value sum to the input value sum for every source-year. No 18-35 value is fabricated in this DAG; downstream population-weight apportionment must preserve its low-confidence assumption.",
+    "sensitivity": "public"
+  }
+}

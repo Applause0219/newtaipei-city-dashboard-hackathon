@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_death_single_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 22 20 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "死亡",
+      "單齡",
+      "戶政司",
+      "行政區"
+    ],
+    "description": "New Taipei City deaths by single year of the deceased's age and sex, from MOI Household Registration open data ODRP031. The age columns are single-year ages, so the 18-35 youth range is exact and needs no apportionment.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_death_single_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市死亡人數（按死亡者單齡年齡、性別、行政區）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP031/{roc_year}",
+    "source_type": "內政部戶政司 RIS OpenData API (ODRP031)",
+    "source_dept": "內政部戶政司",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "內政部戶政司 ODRP031「人口死亡數按死亡者性別、單一年齡分」年度資料。本DAG只取新北市所轄行政區（年度若有來源缺漏則保留實況），將寬表的0至99歲及100歲以上男女欄位轉為長表。來源的0歲本年／去年出生欄是0歲的細分項，故不重複納入；總計欄只用來做分齡加總對帳。死亡者年齡是單一年齡，因此18至35歲可exact取得、不需分攤。實測涵蓋民國106至114年（西元2017至2025年）。",
+    "etl_description": "Fetch ODRP031 one ROC year at a time with a browser User-Agent and COUNTY=新北市, page through responseData until totalPage, and discover years in both directions from ROC 114, stopping only after two consecutive OD-0102-S no-data responses. If the county-filtered request returns OD-0102-S, retry that same year without COUNTY before declaring no data, because ROC 113 has Chinese columns and its county filter returns the no-data code despite nationwide data existing. RIS no-data is HTTP 200 with responseCode OD-0102-S, so responseCode—not HTTP status—is authoritative. Strip BOMs and normalise the English/Chinese field aliases because the schema varies by year. Discover age columns by anchored role patterns, exclude the 0-year this-year/last-year subcolumns, and raise on missing or unexpected ages. Melt every single-age male/female column into one fact row. Reconcile the age-column sums to the source death_m/death_f/death_total for every district and year before loading.",
+    "sensitivity": "public"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_labor_statistics_age_tw",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 6 15 * *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "青年",
+      "勞動統計",
+      "勞動部",
+      "年齡",
+      "全國",
+      "API",
+      "SDMX-JSON"
+    ],
+    "description": "Taiwan youth (age 15-29) labor-status benchmark from the official Ministry of Labor StatDB SDMX-JSON API. It is national data, not New Taipei City data.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_labor_statistics_age_tw",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "青年（15至29歲）勞動統計",
+    "airflow_update_freq": "monthly",
+    "source": "https://statdb.mol.gov.tw/statiscla/webMain.aspx?sys=100&funid=singleAnyPage&titlename=%E9%9D%92%E5%B9%B4%E5%8B%9E%E5%8B%95%E7%B5%B1%E8%A8%88%E6%9F%A5%E8%A9%A2&pageid=amq01",
+    "source_type": "勞動部統計資料庫 SDMX-JSON API",
+    "source_dept": "勞動部",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "勞動部統計資料庫青年勞動力、就失業總覽，提供 15至29 歲全國人口、勞動力、就業、失業、非勞動力及相關率的月資料；依性別與 15至19、20至24、25至29 歲分組輸出。",
+    "etl_description": "每次先讀取官方查詢定義與 SDMX metadata，動態取得最早／最新月期別，再以 12 個固定性別×年齡查詢取得八項指標。解析器嚴格驗證 fldid、code1、code2 維度、期別一致性、series／observation 數量與非負數值；率值另限制在 0至100。API 沒有地區維度，輸出固定為全國，不標為新北市，也不把 15至29 歲估算成 18至35 歲。",
+    "sensitivity": "public"
+  }
+}

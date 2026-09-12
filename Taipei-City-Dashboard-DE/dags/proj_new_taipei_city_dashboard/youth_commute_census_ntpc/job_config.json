@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_commute_census_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 1 7 *",
+    "catchup": false,
+    "tags": ["youth", "New-Taipei-City", "commuting", "census"],
+    "description": "DGBAS 2020 Population and Housing Census commuting/work-location categories for New Taipei City.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_commute_census_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市通勤通學普查流向",
+    "airflow_update_freq": "decennial census",
+    "source": "https://data.gov.tw/dataset/162050",
+    "source_type": "DGBAS server-rendered catalog and XML resource",
+    "source_dept": "行政院主計總處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "2020 population and housing census work-location categories for people aged 15 and over who have work; the machine-readable resource does not contain age or destination-city fields.",
+    "etl_description": "Download the official XML resource with a browser User-Agent, locate the New Taipei record by role aliases, reconcile the three mutually exclusive flow scopes to the source grand total, and emit one city-level row per flow scope. The 18-35 result is unavailable: age is not present, and no age or destination-city inference is made.",
+    "sensitivity": "public"
+  }
+}

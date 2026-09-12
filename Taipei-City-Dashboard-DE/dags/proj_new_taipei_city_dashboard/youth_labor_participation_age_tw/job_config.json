@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_labor_participation_age_tw",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 7 15 * *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "青年",
+      "勞動力",
+      "勞參率",
+      "年齡",
+      "主計總處",
+      "全國"
+    ],
+    "description": "Taiwan civilian population, labor force and labor-force participation rate by 5-year age group and gender, derived from DGBAS open-data XML counts.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_labor_participation_age_tw",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "勞動力參與率（按年齡組別及性別）",
+    "airflow_update_freq": "monthly",
+    "source": "https://data.gov.tw/dataset/31061, https://data.gov.tw/dataset/31063",
+    "source_type": "行政院主計總處人力資源調查 XML",
+    "source_dept": "行政院主計總處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "資料集31061提供15歲以上民間人口按15-19、20-24、25-29、30-34、35-39等年齡組及性別的人數，資料集31063提供同口徑勞動力人數。本DAG同時輸出兩個原始count與由分子／分母計算的rate。",
+    "etl_description": "Resolve the live XML download links from the server-rendered data.gov.tw pages, fetch both official sources with a browser User-Agent, parse the annual-plus-monthly period sequence (months following an annual average belong to the following calendar year), resolve age/gender fields by semantic aliases, and derive participation rate as labor-force count divided by civilian-population count. Counts are reconciled separately by cell count and Decimal sum; annual total-age anchors use the three-times-median scale guard. No population scaling or 18-35 estimate is materialized.",
+    "sensitivity": "public"
+  }
+}

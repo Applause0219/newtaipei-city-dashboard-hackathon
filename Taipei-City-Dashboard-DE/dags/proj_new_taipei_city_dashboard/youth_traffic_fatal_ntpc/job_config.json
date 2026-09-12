@@ -1,0 +1,46 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_traffic_fatal_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 18 5,11 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "交通事故",
+      "A1",
+      "單齡年齡",
+      "機車",
+      "行政區"
+    ],
+    "description": "New Taipei City A1 (fatal within 24h) road traffic accident parties by single year of age, gender, vehicle category and district, from MOI open data. The only youth source so far whose age is recorded per single year, so the 18-35 range needs no apportionment at all.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_traffic_fatal_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市A1道路交通事故當事者（單齡年齡、車種、行政區）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://data.gov.tw/dataset/177136",
+    "source_type": "政府資料開放平臺 / 內政部警政署",
+    "source_dept": "內政部警政署",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "內政部警政署逐年發布之道路交通事故原始資料，A1 指事故發生24小時內死亡之事故。本DAG僅取A1（A2受傷事故每年解壓約600MB，刻意不處理），篩選處理單位為新北市政府警察局者，並自發生地點解析行政區。當事者年齡為單一年齡而非年齡組，是目前所有青年資料源中唯一能以exact方式取得18-35歲數字、完全不需分攤的來源。原始資料另含經緯度，可供未來建立點位圖層。實測109、111、112、113、114共5個年度，新北市每年355至436名當事者，其中18-35歲約105至123人，機車佔青年當事者約六成。",
+    "etl_description": "For each ROC year, fetch the data.gov.tw catalog page and parse out the current opdadm download URL rather than hard-coding it, because the resource UUID differs per year and changes over time. Download the ZIP and extract only the A1 CSV. Filter to the New Taipei City Police Department, resolve district by matching the accident location string against the known district list, and map to the same district codes used by youth_pop_single_age so the two tables join directly. Three indicators are emitted. traffic_fatal_party_count is at party grain and carries single-year age, so 18-35 is exact. traffic_fatal_accident_count and traffic_fatal_death_count are at accident grain, deduplicated by date/time/location, and deliberately carry no age: the source's casualty field is an accident-level value repeated on every party row, so deaths cannot be attributed to a particular party or age. Grouping columns are null-filled before aggregation because pandas groupby silently drops rows whose key is NaN, which was observed to lose 45 of 406 New Taipei parties in ROC 114; a reconciliation check then asserts that emitted party counts equal input counts and raises otherwise.",
+    "sensitivity": "public"
+  }
+}

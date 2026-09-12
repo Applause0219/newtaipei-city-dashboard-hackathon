@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_election_turnout_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 1 * *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "New-Taipei-City",
+      "public-participation",
+      "election",
+      "CEC"
+    ],
+    "description": "CEC 2024 presidential election turnout rate by single age and sex for New Taipei City, based on the official raw survey file.",
+    "default_args": {
+      "owner": "airflow",
+      "email": [
+        "DEFAULT_EMAIL_LIST"
+      ],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_election_turnout_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "第16任總統副總統及第11屆立法委員選舉投票統計分析原始抽樣資料（新北市）",
+    "airflow_update_freq": "monthly",
+    "source": "https://web.cec.gov.tw/central/article/58559",
+    "source_type": "官方 ZIP／XLSX",
+    "source_dept": "中央選舉委員會",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "中選會公開的 2024 年總統及立法委員選舉投票統計分析原始抽樣檔，含 cityid、SEX、AVOTE、age 等角色明確欄位。",
+    "etl_description": "下載中選會官方 ZIP，讀取其中原始 XLSX，以欄位角色解析後篩選 cityid=65（新北市）。依單歲 age 與投票變數 AVOTE 計算未加權樣本投票率；18、19 歲在該次選舉資料中不存在，不推估、不補齊。每個年齡／性別群組的來源筆數、有效投票筆數、投票／未投票／缺失筆數均寫入 breakdown，並對帳所有新北市來源筆數。",
+    "sensitivity": "public"
+  }
+}

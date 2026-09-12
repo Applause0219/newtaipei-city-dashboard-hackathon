@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_household_income_tw",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 21 20 4,10 *",
+    "catchup": false,
+    "tags": ["economic", "youth", "家庭收支", "主計總處", "全國"],
+    "description": "主計總處家庭收支調查：按經濟戶長年齡組的平均每戶可支配所得與消費支出。資料為全國家庭估計，不等於18至35歲個人所得。",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_household_income_tw",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "家庭收支調查：經濟戶長年齡別可支配所得與消費",
+    "airflow_update_freq": "twice a year",
+    "source": "https://data.gov.tw/dataset/108265",
+    "source_type": "data.gov.tw 目錄頁解析主計總處 CSV",
+    "source_dept": "行政院主計總處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "輸出2024年全國家庭、所得五等分位及經濟戶長年齡組的平均每戶可支配所得與消費支出，單位元/戶/年。",
+    "etl_description": "先抓 data.gov.tw 資料集 HTML，再解析 ws.dgbas.gov.tw 的 CSV 連結；依欄位角色辨識所得與消費欄，保留原始年齡組與所得分位。18至35的切割不在ETL固化。",
+    "sensitivity": "public"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_jcic_credit_age_tw",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 21 20 * *",
+    "catchup": false,
+    "tags": ["economic", "youth", "負債", "信貸", "聯徵中心", "年齡"],
+    "description": "聯徵中心按性別、年齡組與授信類別的信用存量統計；保留原始年齡組，不將其切割成18至35歲。",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_jcic_credit_age_tw",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "聯徵中心按年齡與性別的信用統計",
+    "airflow_update_freq": "monthly",
+    "source": "https://www.jcic.org.tw/jcweb/en/services/inquiry/public/files/NPL_1_63.csv",
+    "source_type": "聯徵中心 Open Data CSV NPL_1_63",
+    "source_dept": "財團法人金融聯合徵信中心",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "按月、性別、年齡組、授信類別提供人數、額度、件數、平均每筆額度、餘額及逾期放款比率。",
+    "etl_description": "以欄位角色辨識來源欄位；年齡組解析為整數上下界，其他或不詳保留原始標籤並不猜測。額度與餘額為千元加總量，逾期放款比率不依人口縮放。",
+    "sensitivity": "public"
+  }
+}

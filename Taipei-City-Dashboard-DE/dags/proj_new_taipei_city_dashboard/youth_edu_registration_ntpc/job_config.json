@@ -1,0 +1,44 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_edu_registration_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "17 16 15 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "教育",
+      "大專校院",
+      "新生註冊率",
+      "rate",
+      "新北市"
+    ],
+    "description": "New Taipei City college freshman registration rate by academic year and campus school. The value is a rate, never a count and never summed; the UDB source has no student age, so 18-35 is unavailable.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_edu_registration_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市大專校院新生註冊率",
+    "airflow_update_freq": "twice a year",
+    "source": "https://udb.moe.edu.tw/download/udata/static_file/114/學12-3.新生(含境外生)註冊率-以「校」統計.csv",
+    "source_type": "教育部大專校院校務資訊公開 UDB 靜態 CSV",
+    "source_dept": "教育部",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "教育部大專校院校務資訊公開的校級新生（含境外生）註冊率。本DAG以教育部統計處 student.csv 的學校代碼／名稱與縣市欄位建立校址縣市對照，只保留校址在新北市的學校；輸出E欄百分比，value_type為rate。來源沒有學生年齡，18-35為unavailable。",
+    "etl_description": "Fetch the specified UDB registration-rate CSV with a browser User-Agent and percent-encoded URL, probing the other requested static directories and preferring the newest copy for duplicate academic years. Build a school-to-county crosswalk from MOE student.csv by school code first and school name second, normalising pre-reform county names and failing loudly if any UDB school remains unresolved. Filter by campus county New Taipei City. Parse A-D counts and the rate as a percentage, supporting current D/E and legacy E/D labels; ... is suppression and is not zero. Keep the source counts in breakdown for audit, validate the source formula when all four inputs are visible, allow and record the source's 100% cap, count suppressed rate cells, and apply a three-times annual median-rate scale guard. Rates are not summed or converted to an 18-35 rate.",
+    "sensitivity": "public"
+  }
+}

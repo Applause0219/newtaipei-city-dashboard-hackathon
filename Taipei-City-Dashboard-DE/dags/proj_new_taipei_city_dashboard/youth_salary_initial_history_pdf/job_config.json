@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_salary_initial_history_pdf",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 22 30 4 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "青年",
+      "初任薪資",
+      "教育程度",
+      "歷年",
+      "勞動部",
+      "PDF"
+    ],
+    "description": "MOL initial-salary education history for ROC 110-113 from the official release PDFs. Monetary values are normalized from thousand NTD to NTD; the source has no usable person-level age field, so 18-35 is unavailable.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_salary_initial_history_pdf",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "初任人員薪資歷年（按教育程度，官方 PDF）",
+    "airflow_update_freq": "yearly",
+    "source": "https://www.mol.gov.tw/1607/1632/1640/80217/",
+    "source_type": "勞動部官方發布頁 PDF",
+    "source_dept": "勞動部",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "勞動部民國110至113年初任人員薪資統計官方發布 PDF。輸出教育程度結構比、月薪平均數與可發布的薪資中位數；教育程度標籤保留 PDF 原文，不把「大專（專科及大學）」硬拆成既有 JSON 的個別分類。",
+    "etl_description": "Fetch each official server-rendered release page with a browser User-Agent, resolve the unique PDF href containing 初任 and 薪資, require application/pdf and PDF magic bytes, and run Poppler pdftotext -layout. The 110 PDF uses standalone tables; 111 uses a two-year appendix table; 112 and 113 use a four-year appendix table. Parse only the current ROC year's education rows, preserve raw education labels, convert mean and median from thousand NTD to NTD, leave all age fields null, reconcile every selected source cell to an emitted fact, and fail on any unknown 3x annual scale anomaly.",
+    "sensitivity": "public"
+  }
+}

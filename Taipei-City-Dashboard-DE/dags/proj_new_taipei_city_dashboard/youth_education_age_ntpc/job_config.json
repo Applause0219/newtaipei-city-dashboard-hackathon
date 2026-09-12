@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_education_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 21 20 4 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "教育",
+      "年齡",
+      "性別",
+      "主計處"
+    ],
+    "description": "New Taipei City population aged 15 and above by age band, educational attainment measure and gender. The 15-19 and 35-39 detail bands cross 18-35, so youth conversion is apportioned rather than exact.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_education_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市十五歲以上現住人口教育程度（按年齡別、性別）",
+    "airflow_update_freq": "yearly",
+    "source": "https://data.ntpc.gov.tw/datasets/7854f7b9-894c-4505-b62b-a2053575b80a",
+    "source_type": "新北市資料開放平臺 data.ntpc.gov.tw",
+    "source_dept": "新北市政府主計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "資料集提供1998至2024年新北市十五歲以上現住人口按年齡組、教育程度指標與性別的計數。DAG保留15歲以上總人口摘要列與各年齡組明細，行政區層級為新北市全市65000。",
+    "etl_description": "Fetch page=0,size=5000 until an empty page, with a browser User-Agent. Normalize field/itemvalue aliases by role, parse 15歲以上總人口 and all age bands into integer bounds, and raise on unknown labels. Emit every official metric cell exactly once for 計／男／女; do not add overlapping attainment fields together. The source has one documented internal mismatch in 1998 age 25-29 itemvalue19 (total 250 versus male 0 plus female 98); raw source values are retained and the mismatch is allow-listed, while any new mismatch raises. A yearly summary count is compared with the other-year median and a more-than-threefold scale change raises. The 18-35 classification is apportioned only for detailed age bands; no rate scaling or age inference is performed.",
+    "sensitivity": "public"
+  }
+}

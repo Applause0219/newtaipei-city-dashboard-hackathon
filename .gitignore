@@ -72,4 +72,6 @@ Taipei-City-Dashboard-DE/docker/prod/.env
 **/__pycache__/
 *.py[cod]
 
+**/.claude/settings.local.json
+
 *.env

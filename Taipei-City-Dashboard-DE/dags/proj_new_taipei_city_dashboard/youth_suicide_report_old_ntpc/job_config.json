@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_suicide_report_old_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 20 19 4,10 *",
+    "catchup": false,
+    "tags": ["youth", "新北市", "New-Taipei-City", "自殺通報", "年齡", "歷史"],
+    "description": "New Taipei suicide report counts before ROC 99, by source age band and gender. The 18-19 and 20-29 bands are directly within 18-35; 30-39 crosses 35 and remains raw for query-time apportionment.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_suicide_report_old_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市自殺通報人數（98年以前，按年齡組、性別）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://data.ntpc.gov.tw/datasets/90B1AB09-151C-4567-A6C0-2D5430C2C0EB",
+    "source_type": "新北市資料開放平臺 API",
+    "source_dept": "新北市政府主計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "新北市自殺通報人數98年以前歷史資料，2007–2009三個有效年度，含全年齡男女總計與年齡組男女計數。",
+    "etl_description": "Fetch the paged JSON with a browser User-Agent, reject partially blank records while explicitly dropping only the two all-blank rows returned by the source, resolve itemvalue2-itemvalue21 by semantic age/gender roles, retain total and age-band indicators separately, parse age labels into integer bounds, reconcile each gender total to all age bands including unknown age, and fail on any unknown three-times-median annual scale anomaly.",
+    "sensitivity": "public"
+  }
+}

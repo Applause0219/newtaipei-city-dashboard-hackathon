@@ -1,0 +1,44 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_housing_price_index_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 6 1 1,4,7,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "居住",
+      "房價",
+      "住宅價格指數",
+      "新北市",
+      "季度"
+    ],
+    "description": "Quarterly New Taipei residential property price index from the official PIP table 2 attachment. It has no buyer age field.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 180
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_housing_price_index_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市住宅價格指數",
+    "airflow_update_freq": "quarterly",
+    "source": "https://pip.moi.gov.tw/V3/E/SCRE0106.aspx",
+    "source_type": "內政部不動產資訊平台版本頁解析表2官方 PDF 附件",
+    "source_dept": "內政部國土管理署",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "內政部不動產資訊平台表2全國及六都住宅價格指數；本 DAG 只輸出新北市欄位，area_code=65000、area_level=city。",
+    "etl_description": "每次先讀 PIP V3 住宅價格指數版本頁（不同於已知 E1060 前端查詢死路），解析表2官方 PDF 附件，帶瀏覽器 User-Agent 下載。DAG 用 shutil.which 檢查 pdftotext；以 PDF 表2的期別與欄位位置解析全國／新北市數值，若季度列不足 101Q3 起的完整序列或欄位版面改變即 raise。民國季度轉西元季度起訖日，value_type=index，不做 18-35 分攤或人口比例縮放。以 source_row_count 逐列對帳，並按年度中位數執行三倍尺度防護；KNOWN_BAD_YEARS 目前為空。PDF 表2是累積歷史表，但附件可能修訂過去值，不是 append-only API。",
+    "sensitivity": "public"
+  }
+}

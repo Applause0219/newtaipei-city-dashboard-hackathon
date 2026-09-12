@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_edu_students",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 19 15 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "教育",
+      "在學學生",
+      "大專校院",
+      "教育部統計處",
+      "學年度",
+      "新北市"
+    ],
+    "description": "New Taipei City college and university enrolled-student counts by school, level, day/continuing division, academic system and gender, from MOE Department of Statistics. The source has no age field, so 18-35 is unavailable and no age is inferred from study level or grade.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 60
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_edu_students",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "大專校院在學學生數（含縣市、學制、性別）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://stats.moe.gov.tw/files/detail/{academic_year}/{academic_year}_student.csv",
+    "source_type": "教育部統計處 檔案下載",
+    "source_dept": "教育部統計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "教育部統計處逐學年度發布的大專校院在學學生數，含學校、日間∕進修別、等級別、縣市、體系別及男女學生數。實測 103–113 學年度可下載；114、115 回 404。103–106 沒有總計及男女合計欄，須由各年級與延修生欄位加總；107–113 有總計、男生計、女生計，113 另含華語先修生欄位。",
+    "etl_description": "Probe student.csv from academic year 103 forward until two consecutive 404 responses. Use a browser User-Agent and a standards-compliant CSV parser with UTF-8 BOM support. Resolve fields by role rather than assuming the graduate table's names: early files have only grade/extension male and female columns, while later files have aggregate total columns. Treat '-' as a source zero, remove thousands separators when parsing counts, and reconcile gender totals to detail fields and output totals to the New Taipei input totals for every academic year. County labels use pre-reform codes, so map by county name to the standard code 65000. Academic-year periods use August 1 through July 31 of the following Gregorian year. There is no age field; age_lower, age_upper and age_band_raw remain null and 18-35 is unavailable.",
+    "sensitivity": "public"
+  }
+}

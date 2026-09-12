@@ -10,7 +10,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 複製並安裝 Python 依賴
+# PyTorch with CUDA 12.4 — GPU embedding generation via sentence-transformers.
+# Requires docker-compose deploy.resources.reservations.devices with nvidia GPU.
+RUN pip install --no-cache-dir \
+    torch==2.9.0 \
+    --index-url https://download.pytorch.org/whl/cu124
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

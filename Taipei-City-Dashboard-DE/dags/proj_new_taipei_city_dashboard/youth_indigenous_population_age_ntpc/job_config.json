@@ -1,0 +1,46 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_indigenous_population_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 22 20 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "原住民",
+      "人口",
+      "單齡",
+      "戶政司",
+      "行政區"
+    ],
+    "description": "New Taipei City indigenous population by single year of age, sex, indigenous registration category and district, from MOI Household Registration open data ODRP015. Village-level source rows are aggregated to district level; single-year age makes 18-35 exact.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 600
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_indigenous_population_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市原住民人口（單齡年齡、身分、性別、行政區）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP015/{roc_yyyymm}",
+    "source_type": "內政部戶政司 RIS OpenData API (ODRP015)",
+    "source_dept": "內政部戶政司",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "ODRP015 提供每一村里、性別、單一年齡及原住民身分的現住原住民人口。DAG 逐頁抓取後在當下只保留新北市 29 個行政區，再由村里聚合到行政區；不把村里明細直接寫入事實表。已驗證民國107至114年底快照，民國115年取當時最後可用的11507快照。單齡年齡使18-35可exact取得。",
+  "etl_description": "Discover one latest available monthly snapshot per ROC year around anchor ROC 114, stopping in each direction after two consecutive years with no RIS data. Fetch every page with COUNTY=新北市 and a browser User-Agent. RIS no-data is HTTP 200 with responseCode OD-0102-S, so responseCode is authoritative. Filter by the first eight digits of district_code while each page is in hand; non-New-Taipei rows are never accumulated. Normalise the BOM and the historical aborigine_registered/aborigine_count aliases by role before validating fields. Parse age labels into integer bounds, map male/female, validate the three indigenous registration categories, aggregate village records to district and city rows, and reconcile the input count to both district and city output on every period. A three-times-other-year-median scale guard fails unknown scope changes; KNOWN_BAD_YEARS is empty.",
+    "sensitivity": "public"
+  }
+}

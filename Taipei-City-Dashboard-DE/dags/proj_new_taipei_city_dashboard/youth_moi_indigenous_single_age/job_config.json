@@ -1,0 +1,37 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_moi_indigenous_single_age",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 7 10 * *",
+    "catchup": false,
+    "tags": ["youth", "新北市", "New-Taipei-City", "原住民", "人口", "單齡"],
+    "description": "New Taipei City indigenous population by single age and sex from MOI dataset 9606. This is an exact official snapshot/alternate source to the existing RIS village-level DAG.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_moi_indigenous_single_age",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市原住民人口數單一年齡組（內政部統計）",
+    "airflow_update_freq": "monthly",
+    "source": "https://data.gov.tw/dataset/9606",
+    "source_type": "內政部統計處統計資料服務（data.gov.tw 資料集9606）",
+    "source_dept": "內政部統計處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "按區域與性別提供原住民族0至99歲及100歲以上人口數。本DAG保留新北市全市男、女、性別總計列，與既有RIS ODRP015村里級原住民族資料分表保存。",
+    "etl_description": "從data.gov.tw目錄取得目前CSV資源（失敗時使用已核驗資源網址），只保留新北市與性別總計／男／女列；解析單齡欄位並逐齡核對男女合計。這是統計服務快照，若要完整歷史須依來源備註的ym／ymt參數分段查詢。",
+    "sensitivity": "public"
+  }
+}

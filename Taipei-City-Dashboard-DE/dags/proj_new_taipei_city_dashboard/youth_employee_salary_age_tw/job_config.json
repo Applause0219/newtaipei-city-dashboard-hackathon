@@ -1,0 +1,45 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_employee_salary_age_tw",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 6 1 12 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "青年",
+      "受僱員工",
+      "全年總薪資",
+      "年齡別",
+      "主計總處",
+      "全國"
+    ],
+    "description": "Taiwan industrial and service employees' annual total salary by age and industry scope, with mean and median values for ROC 110-113.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 300
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_employee_salary_age_tw",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "受僱員工全年總薪資（按年齡別及業別）",
+    "airflow_update_freq": "yearly",
+    "source": "https://www.stat.gov.tw/News_Content.aspx?n=4580&s=232642",
+    "source_type": "行政院主計總處官方統計表2 Excel",
+    "source_dept": "行政院主計總處",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "主計總處工業及服務業全體受僱員工全年總薪資統計表2，依業別提供全體、未滿25歲、25-29歲、未滿30歲、30-39歲、40-49歲、50-64歲及65歲以上的平均數與中位數。現行官方表2包含民國110至113年四個工作表，數值單位為萬元。",
+    "etl_description": "Fetch the official statistics page with a browser User-Agent, parse its server-rendered table-2 XLSX link, read the workbook with the standard-library XLSX package parser, and resolve the two-level measure/age headers by role rather than hard-coding a single cell. Age labels are converted to integer bounds; unparseable labels raise. Every numeric source cell emitted is reconciled by count and sum, and the comparable total rows receive a three-times-median scale guard. The ETL keeps the source age bands and overlapping under-25/under-30 scopes; it never materializes an 18-35 salary estimate.",
+    "sensitivity": "public"
+  }
+}

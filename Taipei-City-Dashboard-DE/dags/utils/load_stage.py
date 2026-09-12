@@ -6,6 +6,18 @@ from sqlalchemy.sql import text as sa_text
 from utils.get_time import get_tpe_now_time_str
 
 
+def _table_exists(conn, table_name: str) -> bool:
+    return conn.execute(
+        sa_text(
+            "SELECT EXISTS ("
+            "  SELECT 1 FROM information_schema.tables"
+            "  WHERE table_schema='public' AND table_name=:t"
+            ")"
+        ),
+        {"t": table_name},
+    ).scalar()
+
+
 def update_lasttime_in_data_to_dataset_info(
     engine, airflow_dag_id, lasttime_in_data=None
 ):
@@ -183,27 +195,37 @@ def save_dataframe_to_postgresql(
             default_table, conn, if_exists="append", index=False, schema="public"
         )
     elif load_behavior == "replace":
-        conn.execute(
-            sa_text(f"TRUNCATE TABLE {default_table}").execution_options(
-                autocommit=True
+        if _table_exists(conn, default_table):
+            conn.execute(
+                sa_text(f"TRUNCATE TABLE {default_table}").execution_options(
+                    autocommit=True
+                )
             )
-        )
-        data.to_sql(
-            default_table, conn, if_exists="append", index=False, schema="public"
-        )
+            data.to_sql(
+                default_table, conn, if_exists="append", index=False, schema="public"
+            )
+        else:
+            data.to_sql(
+                default_table, conn, if_exists="replace", index=False, schema="public"
+            )
     elif load_behavior == "current+history":
         if history_table is None:
             raise ValueError(
                 "history_table should be provided when load_behavior is `current+history`."
             )
-        conn.execute(
-            sa_text(f"TRUNCATE TABLE {default_table}").execution_options(
-                autocommit=True
+        if _table_exists(conn, default_table):
+            conn.execute(
+                sa_text(f"TRUNCATE TABLE {default_table}").execution_options(
+                    autocommit=True
+                )
             )
-        )
-        data.to_sql(
-            default_table, conn, if_exists="append", index=False, schema="public"
-        )
+            data.to_sql(
+                default_table, conn, if_exists="append", index=False, schema="public"
+            )
+        else:
+            data.to_sql(
+                default_table, conn, if_exists="replace", index=False, schema="public"
+            )
         data.to_sql(
             history_table, conn, if_exists="append", index=False, schema="public"
         )
@@ -314,44 +336,46 @@ def save_geodataframe_to_postgresql(
             dtype={geometry_col: Geometry(geometry_type, srid=4326)},
         )
     elif load_behavior == "replace":
-        conn.execute(
-            sa_text(f"TRUNCATE TABLE {default_table}").execution_options(
-                autocommit=True
+        geo_dtype = {geometry_col: Geometry(geometry_type, srid=4326)}
+        if _table_exists(conn, default_table):
+            conn.execute(
+                sa_text(f"TRUNCATE TABLE {default_table}").execution_options(
+                    autocommit=True
+                )
             )
-        )
-        gdata.to_sql(
-            default_table,
-            conn,
-            if_exists="append",
-            index=False,
-            schema="public",
-            dtype={geometry_col: Geometry(geometry_type, srid=4326)},
-        )
+            gdata.to_sql(
+                default_table, conn, if_exists="append",
+                index=False, schema="public", dtype=geo_dtype,
+            )
+        else:
+            gdata.to_sql(
+                default_table, conn, if_exists="replace",
+                index=False, schema="public", dtype=geo_dtype,
+            )
     elif load_behavior == "current+history":
         if (history_table is None) or (history_table == ""):
             raise ValueError(
                 "history_table should be provided when load_behavior is `current+history`."
             )
-        conn.execute(
-            sa_text(f"TRUNCATE TABLE {default_table}").execution_options(
-                autocommit=True
+        geo_dtype = {geometry_col: Geometry(geometry_type, srid=4326)}
+        if _table_exists(conn, default_table):
+            conn.execute(
+                sa_text(f"TRUNCATE TABLE {default_table}").execution_options(
+                    autocommit=True
+                )
             )
-        )
+            gdata.to_sql(
+                default_table, conn, if_exists="append",
+                index=False, schema="public", dtype=geo_dtype,
+            )
+        else:
+            gdata.to_sql(
+                default_table, conn, if_exists="replace",
+                index=False, schema="public", dtype=geo_dtype,
+            )
         gdata.to_sql(
-            default_table,
-            conn,
-            if_exists="append",
-            index=False,
-            schema="public",
-            dtype={geometry_col: Geometry(geometry_type, srid=4326)},
-        )
-        gdata.to_sql(
-            history_table,
-            conn,
-            if_exists="append",
-            index=False,
-            schema="public",
-            dtype={geometry_col: Geometry(geometry_type, srid=4326)},
+            history_table, conn, if_exists="append",
+            index=False, schema="public", dtype=geo_dtype,
         )
     else:
         raise ValueError(

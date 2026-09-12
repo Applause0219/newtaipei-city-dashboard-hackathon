@@ -1,0 +1,47 @@
+{
+  "dag_infos": {
+    "dag_id": "youth_naturalized_population_age_ntpc",
+    "start_date": "2026-09-01",
+    "schedule_interval": "0 23 20 4,10 *",
+    "catchup": false,
+    "tags": [
+      "youth",
+      "新北市",
+      "New-Taipei-City",
+      "新住民",
+      "歸化",
+      "定居",
+      "單齡",
+      "戶政司",
+      "行政區"
+    ],
+    "description": "New Taipei City population recorded through initial household registration by single year of age, sex, origin category and district, from MOI Household Registration open data ODRP072. Village-level source rows are aggregated to district level; single-year age makes 18-35 exact.",
+    "default_args": {
+      "owner": "airflow",
+      "email": ["DEFAULT_EMAIL_LIST"],
+      "email_on_retry": false,
+      "email_on_failure": true,
+      "retries": 1,
+      "retry_delay": 900
+    },
+    "ready_data_db": "postgres_default",
+    "ready_data_default_table": "youth_naturalized_population_age_ntpc",
+    "ready_data_history_table": "",
+    "raw_data_db": "postgres_default",
+    "raw_data_table": "",
+    "load_behavior": "replace"
+  },
+  "data_infos": {
+    "name_cn": "新北市歸化及定居取得國籍人口（單齡年齡、來源、性別、行政區）",
+    "airflow_update_freq": "twice a year",
+    "source": "https://www.ris.gov.tw/rs-opendata/api/v1/datastore/ODRP072/{roc_year}",
+    "source_type": "內政部戶政司 RIS OpenData API (ODRP072)",
+    "source_dept": "內政部戶政司",
+    "gis_format": null,
+    "output_coordinate": "",
+    "is_geometry": 0,
+    "dataset_description": "ODRP072 是初設戶籍／歸化及定居取得國籍人口的年度村里級資料，欄位含來源類別、性別與單齡年齡。本DAG逐頁抓取後只保留新北市29個行政區，再由村里聚合到行政區；不把它描述成一般遷入人口。已驗證民國112至113年。單齡年齡使18-35可exact取得。",
+   "etl_description": "Discover annual ROC periods around anchor ROC 113, stopping in each direction after two consecutive years with no RIS data. Fetch every page with COUNTY=新北市 and a browser User-Agent. RIS no-data is HTTP 200 with responseCode OD-0102-S, so responseCode is authoritative. Filter by the first eight digits of district_code while each page is in hand; non-New-Taipei rows are never accumulated. Parse age labels into integer bounds, map male/female, validate all six observed origin categories, aggregate village records to district and city rows, and reconcile the input count to both district and city output on every period. A three-times-other-year-median scale guard fails unknown scope changes; KNOWN_BAD_YEARS is empty. This source represents initial household registration / naturalization and settlement nationality acquisition, not ordinary migration.",
+    "sensitivity": "public"
+  }
+}
