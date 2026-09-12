@@ -214,29 +214,60 @@ Secret Key，方向完全錯**。
 
 ---
 
-## 評估過但不採用
+## Pi agent harness 評估（`earendil-works/pi`）
 
-### Pi agent harness（`earendil-works/pi`）
+**第一次判斷不採用，理由有兩個是錯的。實跑 spike 後推翻。**
 
-| 項目 | 數字 |
+### 實測結果
+
+寫了一個只註冊「查新北各區青年人口」單一工具的 agent，接
+`us.anthropic.claude-sonnet-4-6`，問「哪三個區青年人口最多」：
+
+```
+── 完成（6929ms）──
+事件序列: agent_start → turn_start → message_start → message_end
+        → message_update → tool_execution_start → tool_execution_end
+        → turn_end → agent_end
+```
+
+模型自己決定呼叫工具、工具打真的 PostgreSQL、回答
+板橋 96,548／新莊 82,069／中和 71,597——**與直接查資料庫逐字相同**。
+
+### 原本的理由哪裡錯了
+
+| 原本的說法 | 實際 |
 |---|---|
-| 規模 | 1,713 檔、33MB、1,398 個 `.ts` |
-| `pi-agent-core` | 25,305 行 TypeScript |
-| npm 解壓體積 | agent-core 3.6MB ＋ pi-ai 4.3MB ＋ chord 0.9MB |
-| Bedrock 支援 | ✔ 有（`amazon-bedrock.ts`）|
+| TypeScript，需要建置步驟 | **錯**。npm 版出貨編譯好的 ESM JS ＋ `.d.ts`，純 Node `import` 可用 |
+| 編碼用 agent，工具是檔案／bash 導向 | **錯**。`pi-agent-core` 是通用的，編碼工具在另一個 `coding-agent` 套件 |
+| 時間不夠 | 這不是技術論據 |
 
-**不採用，三個理由：**
+### 真正的成本與收穫
 
-1. **它是編碼用的 agent**，內建工具是檔案／bash 導向，不是領域分析。我們要的
-   20 個 tool（`run_trend_analysis`、`publish_component`…）無論如何都得自己寫——
-   Pi 只省掉「跑迴圈」這個最簡單的部分。
-2. **它是 TypeScript**，而 `local-demo/` 刻意維持零建置步驟。引入等於在 demo 前
-   增加一個建置階段和一整棵相依樹（含 `chord` 這個完整的應用組合 runtime）。
-3. **時間**：9/13 13:00 截止。現有 6,569 行、73 個測試、端到端可跑。
+**成本：**
+- `node_modules` 110MB、55 個套件（目前除了 bedrock-sdk 幾乎零相依）
+- npm 版的內建模型註冊表是**空的**（`getBuiltinModels()` 回 0），
+  必須手工建 `Model` 物件。單一模型沒問題，但是個未文件化的粗糙邊緣
 
-這跟藍圖 §15 選 Python 套件是同一個判斷，理由也記在 `ai/mining.js:14-18`：
+**收穫：**
+- `beforeToolCall` 可回 `{block: true}` 擋下工具執行——與我們「先閘門後評分」
+  的架構完全對得上
+- 事件流就是藍圖 §25 demo 劇本要的那個漏斗畫面
+- compaction、parallel/sequential 工具執行、串流部分結果
+- 供應商抽象（開發期可切 Gemini，比賽用 Bedrock，不動 `provider.js`）
 
-> 為了一個變點偵測多裝一個 Python runtime，等於在比賽現場多一個會壞掉的東西。
+### 與「LLM 不碰數字」衝突嗎——不衝突
 
-**如果比賽後要長期維護，Pi 值得重新評估**——多供應商抽象和 session 管理是真的好用。
-現在不是時候。
+agent 迴圈決定的是**呼叫哪個工具**，不是算數字。只要每個工具本身是決定性的
+（`mining.js` 現在就是），數字依然可重算、可稽核。
+
+藍圖 §6.3「為什麼使用 Agent 而不是單一 Prompt」講的正是這件事。
+
+### 建議做法：新增而非取代
+
+把 `pipeline.js` 現有的各階段包成工具，**不重寫任何分析程式碼**：
+
+- `/api/insight` → 決定性管線（可重現，用於報告）
+- `/api/agent` → agent 迴圈（探索式，用於對話 demo）
+
+兩條路共用同一批決定性函式。可重現性的故事不但沒被削弱，
+反而多了一個「同一組工具、兩種使用方式」的說法。
