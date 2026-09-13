@@ -109,9 +109,16 @@ class PublishResult(BaseModel):
     violations: list[GuardrailViolation] = Field(default_factory=list)
 
 
+class AnalysisInsight(BaseModel):
+    title: str = Field(min_length=1)
+    claim: str = Field(min_length=1)
+    narrative: str = Field(min_length=1)
+    source_sql: str = ""
+
+
 class AnalysisResult(BaseModel):
     question: str
-    insights: list[dict[str, Any]] = Field(default_factory=list)
+    insights: list[AnalysisInsight] = Field(default_factory=list)
     report_markdown: str = ""
     published: list[str] = Field(default_factory=list)
     rejected: list[dict[str, Any]] = Field(default_factory=list)

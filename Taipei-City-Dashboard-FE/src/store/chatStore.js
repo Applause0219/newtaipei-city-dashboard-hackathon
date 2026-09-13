@@ -205,10 +205,24 @@ export const useChatStore = defineStore('chat', () => {
 			}
 			try {
 				const ev = JSON.parse(e.data);
-				if (ev.type === 'tool_call') {
+				if (ev.type === 'reasoning' && ev.content) {
+					const lastStep = agentMsg.thinkingSteps[agentMsg.thinkingSteps.length - 1];
+					if (ev.append && lastStep?.type === 'reasoning' && lastStep.partIndex === ev.part_index) {
+						lastStep.label += ev.content;
+					} else {
+						agentMsg.thinkingSteps.push({
+							type: 'reasoning',
+							partIndex: ev.part_index,
+							label: ev.content,
+						});
+					}
+					agentMsg.content = '🤖 Agent 正在思考...';
+				} else if (ev.type === 'tool_call') {
+					const sql = ev.tool === 'execute_sql' && typeof ev.args?.query === 'string'
+						? ev.args.query : '';
 					let suffix = '';
-					if (ev.tool === 'execute_sql' && ev.args?.query) {
-						const m = ev.args.query.match(/FROM\s+([\w."]+)/i);
+					if (sql) {
+						const m = sql.match(/FROM\s+([\w."]+)/i);
 						suffix = m ? m[1].replace(/"/g, '') : '';
 					} else if (ev.tool === 'publish_component' && ev.args?.name) {
 						suffix = ev.args.name;
@@ -216,6 +230,7 @@ export const useChatStore = defineStore('chat', () => {
 					agentMsg.thinkingSteps.push({
 						type: 'call',
 						label: `${_toolLabel(ev.tool)}${suffix ? ' → ' + suffix : ''}`,
+						sql,
 					});
 					agentMsg.content = `🤖 Agent 呼叫工具：${_toolLabel(ev.tool)}`;
 				} else if (ev.type === 'tool_result') {

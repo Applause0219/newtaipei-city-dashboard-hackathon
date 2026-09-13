@@ -221,5 +221,6 @@ agent = Agent(
     system_prompt=SYSTEM_PROMPT,
     tools=[execute_sql, publish_component],
     output_type=AnalysisResult,
+    model_settings={"thinking": "xhigh"},
     retries=4,
 )

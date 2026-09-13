@@ -112,15 +112,37 @@ def _format_sse_event(event: Any) -> dict[str, Any] | None:
             FunctionToolCallEvent,
             FunctionToolResultEvent,
             FinalResultEvent,
+            PartDeltaEvent,
+            PartStartEvent,
+            ThinkingPart,
+            ThinkingPartDelta,
         )
     except ImportError:
         return {"type": "event", "detail": str(event)}
 
+    if isinstance(event, PartStartEvent) and isinstance(event.part, ThinkingPart):
+        if not event.part.content:
+            return None
+        return {
+            "type": "reasoning",
+            "part_index": event.index,
+            "content": event.part.content,
+            "append": False,
+        }
+    if isinstance(event, PartDeltaEvent) and isinstance(event.delta, ThinkingPartDelta):
+        if not event.delta.content_delta:
+            return None
+        return {
+            "type": "reasoning",
+            "part_index": event.index,
+            "content": event.delta.content_delta,
+            "append": True,
+        }
     if isinstance(event, FunctionToolCallEvent):
         return {
             "type": "tool_call",
             "tool": event.part.tool_name,
-            "args": event.part.args,
+            "args": event.part.args_as_dict(),
         }
     if isinstance(event, FunctionToolResultEvent):
         content = event.part.content

@@ -14,7 +14,7 @@ const chatStore = useChatStore();
 const contentStore = useContentStore();
 const authStore = useAuthStore();
 const { addChatData, addQueryData, saveChatLog } = chatStore;
-const { createDashboard } = contentStore;
+const { createDashboard, editCurrentDashboard } = contentStore;
 const { chatData, compToDashIndexMap } = storeToRefs(chatStore);
 const { editDashboard } = storeToRefs(contentStore);
 const { user } = storeToRefs(authStore);
@@ -54,15 +54,31 @@ const qaBtnHandler = async (text, relations, chat) => {
 			);
 
 			if (user.value.user_id) {
-				const existing = personalDashboards.filter((d) => d.name.startsWith("推薦儀表板")).length;
-				const dashName = existing > 0 ? `推薦儀表板 (${existing + 1})` : "推薦儀表板";
-				editDashboard.value = {
-					index: "",
-					name: dashName,
-					icon: "star",
-					components: components,
-				};
-				await createDashboard();
+				const existingDash = personalDashboards.find((d) => d.name.startsWith("推薦儀表板"));
+				if (existingDash) {
+					const existingIds = new Set(
+						(existingDash.components ?? []).map(Number),
+					);
+					const merged = [
+						...existingDash.components.map((id) => ({ id })),
+						...components.filter((c) => !existingIds.has(Number(c.id))),
+					];
+					editDashboard.value = {
+						index: existingDash.index,
+						name: existingDash.name,
+						icon: existingDash.icon || "star",
+						components: merged,
+					};
+					await editCurrentDashboard();
+				} else {
+					editDashboard.value = {
+						index: "",
+						name: "推薦儀表板",
+						icon: "star",
+						components: components,
+					};
+					await createDashboard();
+				}
 				if (chat) chat.dashboardCreated = true;
 				saveChatLog("建立儀表板", "使用者成功建立儀表板!");
 			} else {
@@ -172,12 +188,24 @@ const emit = defineEmits(["close"]);
                 <div
                   v-for="(step, idx) in chat.thinkingSteps"
                   :key="idx"
-                  :class="['thinking-step', `step-${step.type}`]"
+                  :class="['thinking-step', `step-${step.type}`, { 'has-detail': step.sql }]"
                 >
                   <span class="step-icon">
-                    {{ step.type === 'call' ? '🔧' : step.type === 'result' ? '📄' : '💬' }}
+                    {{ step.type === 'reasoning' ? '💭' : step.type === 'call' ? '🔧' : step.type === 'result' ? '📄' : '💬' }}
                   </span>
-                  <span class="step-label">{{ step.label }}</span>
+                  <details
+                    v-if="step.sql"
+                    class="step-sql"
+                  >
+                    <summary class="step-label">
+                      {{ step.label }}
+                    </summary>
+                    <pre><code>{{ step.sql }}</code></pre>
+                  </details>
+                  <span
+                    v-else
+                    class="step-label"
+                  >{{ step.label }}</span>
                 </div>
               </div>
             </details>
@@ -578,6 +606,51 @@ $radius-20: 20px;
 									white-space: nowrap;
 									overflow: hidden;
 									text-overflow: ellipsis;
+								}
+
+								&.step-reasoning {
+									height: auto;
+									align-items: flex-start;
+									padding: 8px 0;
+
+									.step-label {
+										flex: 1;
+										min-width: 0;
+										line-height: 1.5;
+										white-space: pre-wrap;
+										overflow: visible;
+										text-overflow: clip;
+										overflow-wrap: anywhere;
+									}
+								}
+
+								&.has-detail {
+									height: auto;
+									align-items: flex-start;
+									padding: 8px 0;
+								}
+
+								.step-sql {
+									flex: 1;
+									min-width: 0;
+
+									summary { cursor: pointer; }
+
+									pre {
+										margin: 6px 0 0;
+										padding: 8px;
+										max-height: 220px;
+										overflow: auto;
+										background: #111;
+										border-radius: 4px;
+									}
+
+									code {
+										color: #8be9fd;
+										font: 11px/1.45 monospace;
+										white-space: pre-wrap;
+										word-break: break-word;
+									}
 								}
 
 								&.step-call .step-label { color: #6fb3ff; }
