@@ -241,6 +241,11 @@ title、claim、narrative、hypothesis 皆為必填。source_sql 盡量提供，
   two_d  : SELECT x_axis::text,        data::float8                    FROM ...
   three_d: SELECT x_axis::text, icon::text, y_axis::text, data::int    FROM ...
   time   : SELECT x_axis::timestamptz,  y_axis::text,    data::float8  FROM ...
+  bubble : SELECT y_axis::text, x::float8, y::float8, z::float8, category::text FROM ...
+           每一列是一個點；y_axis 是點的名稱（例如行政區），x / y 是兩個要比較的數值，
+           z 決定泡泡大小（例如人口數；不需要時全部填 1）。
+           category 每列都填同一個 JSON 字串，說明三個軸代表什麼，例如
+           '{"x":"平均所得（千元）","y":"中位租金（元/月）","z":"青年人口（人）"}'
 
 ###########################################################################
 # 圖表類型選擇指引
@@ -275,6 +280,12 @@ time（時間序列）:
   - TimelineSeparateChart: 多條獨立趨勢線，適合比較不同系列的趨勢（預設）
   - TimelineStackedChart: 堆疊面積圖，適合觀察總量及其組成變化
   - ColumnLineChart: 長條與折線複合圖，適合同時呈現量值與比率
+
+bubble（兩個數值的關係，散佈圖／泡泡圖）:
+  - BubbleChart: 同一批對象（例如各行政區）的兩個數值畫成 X-Y 散佈，
+    泡泡大小可表示第三個數值。使用者問「關係」「相關」「散佈」「對照」時優先使用。
+    兩個指標必須能用相同鍵（例如行政區名稱）JOIN；期間不同時要在 long_desc 註明。
+    散佈只呈現共同分布，claim / narrative 不得寫成因果。
 
 ###########################################################################
 # ComponentSpec 重要欄位提醒

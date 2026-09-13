@@ -65,11 +65,13 @@ _CHART_TYPES_BY_QUERY = {
     "time": frozenset(
         {"TimelineSeparateChart", "TimelineStackedChart", "ColumnLineChart"}
     ),
+    "bubble": frozenset({"BubbleChart"}),
 }
 _DEFAULT_CHART_TYPE = {
     "two_d": "BarChart",
     "three_d": "ColumnChart",
     "time": "TimelineSeparateChart",
+    "bubble": "BubbleChart",
 }
 _FRONTEND_TIME_FROM = frozenset(
     {
@@ -223,7 +225,7 @@ async def publish_component(
     # --- 4. column-order contract + data quality --------------------------
     expected_cols = QUERY_TYPE_COLUMNS[spec.query_type]
     query_chart = sql_guard.repair_common_sql(spec.query_chart)
-    _MIN_ROWS = {"two_d": 2, "three_d": 2, "time": 4}
+    _MIN_ROWS = {"two_d": 2, "three_d": 2, "time": 4, "bubble": 3}
     try:
         ok, reason = sql_guard.validate_sql(spec.query_chart)
         if not ok:

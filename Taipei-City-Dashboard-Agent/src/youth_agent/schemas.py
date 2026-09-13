@@ -53,6 +53,9 @@ CAUSAL_MARKERS: list[str] = [
 QUERY_TYPE_COLUMNS: dict[str, list[str]] = {
     "two_d": ["x_axis", "data"],
     "three_d": ["x_axis", "icon", "y_axis", "data"],
+    # Go backend GetBubbleData: one series per y_axis, points (x, y, z);
+    # category is a JSON string naming the axes, e.g. {"x":"租金","y":"所得","z":"人口"}.
+    "bubble": ["y_axis", "x", "y", "z", "category"],
     "time": ["x_axis", "y_axis", "data"],
 }
 

@@ -146,7 +146,9 @@ const chartOptions = ref({
 		},
 	},
 
-	colors: props.map_config.color,
+	// Agent-published components have no map layer (map_config is null);
+	// their colors live in chart_config like every other chart.
+	colors: props.chart_config?.color ?? props.map_config?.color,
 	dataLabels: { enabled: false },
 	fill: { opacity: 0.7 },
 	grid: { show: false },
