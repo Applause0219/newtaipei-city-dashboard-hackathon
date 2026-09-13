@@ -75,3 +75,6 @@ Taipei-City-Dashboard-DE/docker/prod/.env
 **/.claude/settings.local.json
 
 *.env
+
+# Shared chat history written by local-demo/inject.js at runtime
+Taipei-City-Dashboard-FE/local-demo/data/

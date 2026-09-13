@@ -26,9 +26,9 @@ export const useChatStore = defineStore('chat', () => {
   	const chatData = ref([...defaultChatData, ...savedChatData]);
 
 	// 初始化時重建 compToDashIndexMap
-	const rebuildCompToDashIndexMap = async () => {
+	const rebuildCompToDashIndexMap = async (messages = savedChatData) => {
 		// 收集所有 relations 裡的組件
-		const allComps = savedChatData.flatMap((msg) => msg.relations || []);
+		const allComps = messages.flatMap((msg) => msg.relations || []);
 
 		if (allComps.length === 0) return;
 
@@ -65,13 +65,46 @@ export const useChatStore = defineStore('chat', () => {
   		rebuildCompToDashIndexMap();
 	}
 
-  	// 監聽 chatData 的變化，自動同步到 sessionStorage
+	// 伺服器上的共用對話紀錄（local-demo/inject.js 存成 JSON 檔），
+	// 讓其他電腦打開也看得到同一份對話
+	const chatHistoryUrl = `${import.meta.env.VITE_API_URL === '/api/dev' ? '/api/dev' : '/api'}/chat-history`;
+
+	const loadServerChatHistory = async () => {
+		try {
+			const r = await fetch(chatHistoryUrl, { cache: 'no-store' });
+			if (!r.ok) return;
+			const messages = (await r.json()).data || [];
+			if (messages.length === 0) return;
+			chatData.value = [...defaultChatData, ...messages];
+			rebuildCompToDashIndexMap(messages);
+		} catch (error) {
+			console.error("loadServerChatHistory error:", error);
+		}
+	};
+
+	let saveTimer = null;
+	const saveServerChatHistory = (messages) => {
+		// Agent 串流時每個事件都會觸發，合併成一次寫入
+		clearTimeout(saveTimer);
+		saveTimer = setTimeout(() => {
+			fetch(chatHistoryUrl, {
+				method: 'PUT',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ data: messages }),
+			}).catch((error) => console.error("saveServerChatHistory error:", error));
+		}, 1500);
+	};
+
+	loadServerChatHistory();
+
+  	// 監聽 chatData 的變化，自動同步到 sessionStorage 與伺服器
   	watch(
     	chatData,
     	(newVal) => {
       	// 只存使用者與機器人的聊天訊息，不存重複的預設訊息
       	const userBotMessages = newVal.filter((item) => !item.isDefault)
       	sessionStorage.setItem('chatData', JSON.stringify(userBotMessages))
+      	saveServerChatHistory(userBotMessages)
     	},
     	{ deep: true }
   	);

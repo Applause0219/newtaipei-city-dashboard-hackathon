@@ -59,6 +59,54 @@ async function proxyToAgent(endpoint, method, body) {
 	return r.json();
 }
 
+// ── Chat history ──
+// sessionStorage only lives in one browser, so a demo opened on another
+// machine starts empty. Keep one shared copy on disk instead (no login:
+// every visitor reads and writes the same conversation).
+const CHAT_HISTORY_FILE = process.env.CHAT_HISTORY_FILE || path.join(DIR, "data", "chat-history.json");
+const CHAT_HISTORY_MAX_BYTES = 20 * 1024 * 1024; // agent reasoning traces are long
+
+function readChatHistory() {
+	try {
+		const data = JSON.parse(fs.readFileSync(CHAT_HISTORY_FILE, "utf-8"));
+		return Array.isArray(data) ? data : [];
+	} catch {
+		return [];
+	}
+}
+
+function writeChatHistory(messages) {
+	fs.mkdirSync(path.dirname(CHAT_HISTORY_FILE), { recursive: true });
+	// Write then rename so a reader never sees a half-written file.
+	const tmp = `${CHAT_HISTORY_FILE}.tmp`;
+	fs.writeFileSync(tmp, JSON.stringify(messages), "utf-8");
+	fs.renameSync(tmp, CHAT_HISTORY_FILE);
+}
+
+function readJsonBody(req, maxBytes) {
+	return new Promise((resolve, reject) => {
+		const chunks = [];
+		let size = 0;
+		req.on("data", (c) => {
+			size += c.length;
+			if (size > maxBytes) {
+				reject(new Error(`body exceeds ${maxBytes} bytes`));
+				req.destroy();
+				return;
+			}
+			chunks.push(c);
+		});
+		req.on("end", () => {
+			try {
+				resolve(JSON.parse(Buffer.concat(chunks).toString("utf-8") || "null"));
+			} catch (e) {
+				reject(e);
+			}
+		});
+		req.on("error", reject);
+	});
+}
+
 const read = (f) => JSON.parse(fs.readFileSync(path.join(DIR, f), "utf-8"));
 
 /** 原封不動讀出 body，用於轉發給上游 */
@@ -146,7 +194,34 @@ function createApiMiddleware() {
 				};
 
 				try {
-					// ── 0. Chatbot vector search → proxy to agent search ──
+					// ── Chat history: shared JSON file on the server ──
+						if (normUrl.split("?")[0] === "/api/chat-history") {
+							if (req.method === "GET") {
+								res.setHeader("Cache-Control", "no-store");
+								return send({ data: readChatHistory() }, "chat-history");
+							}
+							if (req.method === "PUT") {
+								let body;
+								try {
+									body = await readJsonBody(req, CHAT_HISTORY_MAX_BYTES);
+								} catch (e) {
+									res.statusCode = 400;
+									return send({ error: `對話紀錄格式錯誤：${e.message}` }, "chat-history");
+								}
+								const messages = Array.isArray(body?.data) ? body.data : null;
+								if (!messages) {
+									res.statusCode = 400;
+									return send({ error: "body 必須是 { data: [...] }" }, "chat-history");
+								}
+								const kept = messages.filter((m) => m && !m.isDefault);
+								writeChatHistory(kept);
+								return send({ saved: kept.length }, "chat-history");
+							}
+							res.statusCode = 405;
+							return send({ error: "只支援 GET 與 PUT" }, "chat-history");
+						}
+
+						// ── 0. Chatbot vector search → proxy to agent search ──
 					if (normUrl.startsWith("/api/vector/component") && req.method === "POST") {
 						const body = await readBody(req);
 						const query = (body.query || "").trim();
