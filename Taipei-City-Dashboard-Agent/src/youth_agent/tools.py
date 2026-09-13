@@ -296,7 +296,10 @@ async def publish_component(
                 ],
             )
 
-        x_vals = [r["x_axis"] for r in records]
+        # bubble rows have no x_axis column (y_axis, x, y, z, category)
+        x_vals = (
+            [] if spec.query_type == "bubble" else [r["x_axis"] for r in records]
+        )
         if spec.query_type == "two_d":
             dupes = [v for v in set(x_vals) if x_vals.count(v) > 1]
             if dupes:
