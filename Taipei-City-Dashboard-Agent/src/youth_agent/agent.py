@@ -18,7 +18,7 @@ from pydantic_ai import Agent
 
 from . import config
 from .schemas import AnalysisResult
-from .tools import execute_sql, publish_component
+from .tools import emit_insight, execute_sql, publish_component
 
 # ---------------------------------------------------------------------------
 # System prompt
@@ -176,7 +176,30 @@ Step 4: 產生 ComponentSpec：
         - long_desc 必須包含用於產生此組件的完整 SQL，格式如下：
           「資料來源 SQL：\n```sql\nSELECT ...\n```」
 Step 5: 呼叫 publish_component 將組件發佈至儀表板。
-Step 6: 彙整所有洞察，填入 AnalysisResult 回傳。
+Step 6: **每完成一項洞察，立刻呼叫 emit_insight 將它串流給使用者。**
+        不要等到最後才一次送出所有洞察。使用者會即時看到每張洞察卡片出現。
+        emit_insight 的 claim / narrative / hypothesis 必須遵守下方「AnalysisResult.insights 結構」
+        的三種語域規則；不合規會被退回要求重寫。
+Step 7: 彙整所有洞察，填入 AnalysisResult 回傳（作為備份，但主要靠 emit_insight 即時送出）。
+Step 8: 在 AnalysisResult.report_markdown 中撰寫綜整分析（300-500 字），使用 Markdown 格式。
+        綜整分析顯示在所有洞察卡片之後，要串連各洞察，不要逐張重抄卡片內容。
+        報告必須嚴格區分三種語氣層次：
+
+        **數據事實**（直接陳述數據，用粗體標記關鍵數字）：
+        例：25–34 歲人口於 2024–2025 年下降 **6.2%**。
+
+        **分析洞察**（基於數據的觀察與比較）：
+        例：下降速度較 2019–2023 年明顯加快，形成趨勢轉折。
+
+        **假設推論**（必須用 Markdown blockquote `>` 標記，不得寫成事實）：
+        例：> 可能與居住成本或就業機會變化有關，仍需其他資料驗證。
+
+        結構要求：
+        - 開頭一段：串連所有洞察的整體敘述（數據事實 + 分析洞察）
+        - 中段：指出跨洞察之間的關聯或對比
+        - 結尾：一句整體結論，後接 blockquote 假設推論
+        - 以繁體中文撰寫，語氣客觀專業
+        - 不得把假設推論寫成數據事實
 
 ###########################################################################
 # AnalysisResult.insights 結構
@@ -218,6 +241,51 @@ title、claim、narrative、hypothesis 皆為必填。source_sql 盡量提供，
   two_d  : SELECT x_axis::text,        data::float8                    FROM ...
   three_d: SELECT x_axis::text, icon::text, y_axis::text, data::int    FROM ...
   time   : SELECT x_axis::timestamptz,  y_axis::text,    data::float8  FROM ...
+
+###########################################################################
+# 圖表類型選擇指引
+###########################################################################
+
+根據資料特性選擇最適合的圖表類型。在 ComponentSpec 中主動設定 chart_types 欄位，
+不要依賴預設值。每個 chart_types 清單可包含 1-3 個類型，使用者可在前端切換。
+
+two_d（靜態比較）:
+  - BarChart: 類別比較，適合類別名稱較長（預設）
+  - ColumnChart: 類別比較，適合類別名稱較短或類別數量多
+  - DonutChart: 比例分佈，適合 ≤8 個類別且需強調佔比
+  - TreemapChart: 階層式比例分佈，適合類別數量多且需看相對大小
+  - RadarChart: 多維度評估，適合 3-8 個維度的綜合比較
+  - PolarAreaChart: 類似圓餅圖但用面積而非角度表示數值差異
+  - DistrictChart: 行政區地理分佈（僅限地理資料）
+  - NegativeColumnChart: 含正負值的比較（如增減幅度、盈虧）
+
+three_d（多維比較）:
+  - ColumnChart: 群組比較，多系列並排（預設）
+  - BarPercentChart: 百分比堆疊，看各組成佔比
+  - HeatmapChart: 矩陣式熱力圖，兩維度交叉的密度或強度
+  - RadarChart: 多維度綜合比較
+  - IndicatorChart: 指標數值顯示，適合 KPI 型資料
+  - TextUnitChart: 純文字數值呈現，適合簡潔的統計摘要
+  - PolarAreaChart: 極座標面積圖
+  - DistrictChart: 行政區地理分佈（僅限地理資料）
+  - NegativeColumnChart: 含正負值的多維比較
+  - QuartileChart: 四分位圖，展示資料分佈與離散程度
+
+time（時間序列）:
+  - TimelineSeparateChart: 多條獨立趨勢線，適合比較不同系列的趨勢（預設）
+  - TimelineStackedChart: 堆疊面積圖，適合觀察總量及其組成變化
+  - ColumnLineChart: 長條與折線複合圖，適合同時呈現量值與比率
+
+###########################################################################
+# ComponentSpec 重要欄位提醒
+###########################################################################
+
+發佈組件時，務必主動設定以下欄位，不要全部依賴預設：
+  - chart_types: 根據上方指引選擇 1-3 個適合的圖表類型
+  - chart_colors: 根據資料系列數量提供顏色陣列（hex 色碼）
+    建議色票：["#4287f5", "#f5a142", "#42f554", "#f54242",
+              "#a142f5", "#f5e642", "#42d4f5", "#f542b3"]
+  - chart_unit: 資料單位（如 "人", "%", "元", "件"）
 """
 
 # ---------------------------------------------------------------------------
@@ -234,7 +302,7 @@ title、claim、narrative、hypothesis 皆為必填。source_sql 盡量提供，
 agent = Agent(
     model=f"bedrock:{config.BEDROCK_MODEL}",
     system_prompt=SYSTEM_PROMPT,
-    tools=[execute_sql, publish_component],
+    tools=[execute_sql, publish_component, emit_insight],
     output_type=AnalysisResult,
     model_settings={"thinking": "xhigh"},
     retries=4,

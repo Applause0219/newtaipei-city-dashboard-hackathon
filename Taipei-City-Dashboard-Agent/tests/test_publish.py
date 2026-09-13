@@ -116,7 +116,12 @@ async def test_publish_repairs_incomplete_existing_component():
         patch("youth_agent.tools.run_guardrails", return_value=[]),
         patch(
             "youth_agent.tools.execute_readonly",
-            new=AsyncMock(return_value=[{"x_axis": "A", "data": 1}]),
+            new=AsyncMock(
+                return_value=[
+                    {"x_axis": "A", "data": 1},
+                    {"x_axis": "B", "data": 2},
+                ]
+            ),
         ),
     ):
         ctx = AsyncMock()

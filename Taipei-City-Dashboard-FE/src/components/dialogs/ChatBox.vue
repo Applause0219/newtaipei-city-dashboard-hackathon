@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, nextTick } from "vue";
 import { storeToRefs } from "pinia";
+import { marked } from "marked";
 import SendIcon from "../icons/SendIcon.vue";
 import BotLogo from "../icons/BotLogo.vue";
 import UserLogo from "../icons/UserLogo.vue";
@@ -9,6 +10,16 @@ import { useChatStore } from "../../store/chatStore";
 import { useContentStore } from "../../store/contentStore";
 import { useAuthStore } from "../../store/authStore";
 import http from "../../router/axios";
+
+marked.setOptions({
+	breaks: true,
+	gfm: true,
+});
+
+const renderMarkdown = (text) => {
+	if (!text) return "";
+	return marked.parse(text);
+};
 
 const chatStore = useChatStore();
 const contentStore = useContentStore();
@@ -28,6 +39,21 @@ const depthOptions = [
 	{ label: "中", value: 3 },
 	{ label: "高", value: 5 },
 ];
+
+const showRetryMap = ref({});
+
+const visibleSteps = (chat) => {
+	if (showRetryMap.value[chat.id]) return chat.thinkingSteps;
+	return chat.thinkingSteps.filter((s) => !s.hidden);
+};
+
+const hiddenStepCount = (chat) => {
+	return (chat.thinkingSteps || []).filter((s) => s.hidden).length;
+};
+
+const toggleRetries = (chatId) => {
+	showRetryMap.value[chatId] = !showRetryMap.value[chatId];
+};
 
 const clearChat = () => {
 	sessionStorage.removeItem("chatData");
@@ -182,20 +208,31 @@ const emit = defineEmits(["close"]);
               :open="!chat.thinkingDone"
             >
               <summary>
-                {{ chat.thinkingDone ? `思考過程（${chat.thinkingSteps.length} 步）` : `思考中...（${chat.thinkingSteps.length} 步）` }}
+                {{ chat.thinkingDone ? `思考過程（${visibleSteps(chat).length} 步）` : `思考中...（${visibleSteps(chat).length} 步）` }}
               </summary>
               <div class="thinking-timeline">
                 <div
-                  v-for="(step, idx) in chat.thinkingSteps"
+                  v-for="(step, idx) in visibleSteps(chat)"
                   :key="idx"
-                  :class="['thinking-step', `step-${step.type}`, { 'has-detail': step.sql }]"
+                  :class="['thinking-step', `step-${step.type}`, { 'has-detail': step.sql || step.type === 'reasoning' }]"
                 >
                   <span class="step-icon">
-                    {{ step.type === 'reasoning' ? '💭' : step.type === 'call' ? '🔧' : step.type === 'result' ? '📄' : '💬' }}
+                    {{ step.type === 'reasoning' ? '💭' : step.type === 'call' ? '🔧' : step.type === 'result' ? '📄' : step.type === 'retry' ? '🔄' : '💬' }}
                   </span>
                   <details
-                    v-if="step.sql"
-                    class="step-sql"
+                    v-if="step.type === 'reasoning'"
+                    class="step-detail"
+                  >
+                    <summary class="step-label">
+                      模型推理
+                    </summary>
+                    <div class="step-reasoning-text">
+                      {{ step.label }}
+                    </div>
+                  </details>
+                  <details
+                    v-else-if="step.sql"
+                    class="step-detail"
                   >
                     <summary class="step-label">
                       {{ step.label }}
@@ -207,6 +244,13 @@ const emit = defineEmits(["close"]);
                     class="step-label"
                   >{{ step.label }}</span>
                 </div>
+              </div>
+              <div
+                v-if="hiddenStepCount(chat) > 0"
+                class="retry-toggle"
+                @click="toggleRetries(chat.id)"
+              >
+                {{ showRetryMap[chat.id] ? '隱藏重試紀錄' : `顯示重試紀錄 (${hiddenStepCount(chat)})` }}
               </div>
             </details>
             <!-- 洞察卡片 -->
@@ -257,6 +301,19 @@ const emit = defineEmits(["close"]);
                   <pre><code>{{ ins.source_sql }}</code></pre>
                 </details>
               </div>
+            </div>
+            <!-- 綜整分析 -->
+            <div
+              v-if="chat.reportMarkdown"
+              class="report-summary"
+            >
+              <div class="report-title">
+                📝 綜整分析
+              </div>
+              <div
+                class="report-text"
+                v-html="renderMarkdown(chat.reportMarkdown)"
+              />
             </div>
             <!-- 表格區 -->
             <div
@@ -589,7 +646,7 @@ $radius-20: 20px;
 
 						.thinking-timeline {
 							padding: 0 14px 8px;
-							max-height: 220px;
+							max-height: 280px;
 							overflow-y: auto;
 
 							&::-webkit-scrollbar {
@@ -641,15 +698,21 @@ $radius-20: 20px;
 
 								&.has-detail {
 									height: auto;
-									align-items: flex-start;
+									align-items: baseline;
 									padding: 8px 0;
 								}
 
-								.step-sql {
+								.step-detail {
 									flex: 1;
 									min-width: 0;
 
-									summary { cursor: pointer; }
+									summary {
+										cursor: pointer;
+										list-style: none;
+										&::-webkit-details-marker { display: none; }
+										padding: 0;
+										margin: 0;
+									}
 
 									pre {
 										margin: 6px 0 0;
@@ -668,9 +731,32 @@ $radius-20: 20px;
 									}
 								}
 
+								.step-reasoning-text {
+									margin-top: 6px;
+									color: #ccc;
+									font-size: 13px;
+									line-height: 1.5;
+									white-space: pre-wrap;
+									overflow-wrap: anywhere;
+									max-height: 120px;
+									overflow-y: auto;
+								}
+
 								&.step-call .step-label { color: #6fb3ff; }
 								&.step-result .step-label { color: #7dd98b; }
+								&.step-retry .step-label { color: #e8a838; }
 							}
+						}
+
+						.retry-toggle {
+							padding: 8px 14px;
+							color: #888;
+							font-size: 12px;
+							cursor: pointer;
+							text-align: center;
+							border-top: 1px solid #2a2c2e;
+							user-select: none;
+							&:hover { color: #ccc; }
 						}
 					}
 
@@ -759,6 +845,98 @@ $radius-20: 20px;
 										word-break: break-word;
 									}
 								}
+							}
+						}
+					}
+
+					.report-summary {
+						border: 1px solid #666;
+						border-radius: 8px;
+						background: #1a1c1e;
+						padding: 10px 14px;
+
+						.report-title {
+							font-weight: 700;
+							font-size: 14px;
+							color: #ccc;
+							margin-bottom: 6px;
+						}
+
+						.report-text {
+							color: #bbb;
+							font-size: 13px;
+							line-height: 1.6;
+							margin: 0;
+
+							:deep(h1),
+							:deep(h2),
+							:deep(h3) {
+								color: #ddd;
+								margin: 8px 0 4px;
+								font-size: 14px;
+							}
+
+							:deep(strong) {
+								color: #eee;
+							}
+
+							:deep(em) {
+								color: #ccc;
+								font-style: italic;
+							}
+
+							:deep(ul),
+							:deep(ol) {
+								padding-left: 20px;
+								margin: 4px 0;
+							}
+
+							:deep(li) {
+								margin: 2px 0;
+							}
+
+							:deep(code) {
+								background: #2a2c2e;
+								padding: 1px 4px;
+								border-radius: 3px;
+								font-size: 12px;
+							}
+
+							:deep(pre) {
+								background: #111;
+								border-radius: 4px;
+								padding: 8px;
+								margin: 6px 0;
+								overflow: auto;
+
+								code {
+									background: none;
+									padding: 0;
+								}
+							}
+
+							:deep(p) {
+								margin: 4px 0;
+							}
+
+							:deep(blockquote) {
+								border-left: 3px solid #555;
+								margin: 8px 0;
+								padding: 6px 12px;
+								background: #222;
+								color: #999;
+								font-style: italic;
+							}
+
+							:deep(a) {
+								color: #5a9cf8;
+								text-decoration: underline;
+							}
+
+							:deep(hr) {
+								border: none;
+								border-top: 1px solid #444;
+								margin: 8px 0;
 							}
 						}
 					}
