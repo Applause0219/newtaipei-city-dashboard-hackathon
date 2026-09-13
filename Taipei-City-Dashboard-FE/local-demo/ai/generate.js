@@ -14,7 +14,24 @@ const CHARTABLE = {
 	minDataPoints: 4,          // 3 個以下直接給數字就好
 	minCategories: 2,          // 一個分類的長條圖沒有比較的對象
 	maxSeries: 8,              // component_charts.color 給的顏色會用完
+	minTimePoints: 3,          // 兩點連線不叫趨勢，叫斜率
 };
+
+/**
+ * psql 回來的日期轉成後端送出的那個格式。
+ *
+ * 後端是 Go 的 time.Format("2006-01-02T15:04:05+08:00")，
+ * 前端 TimelineSeparateChart 的 parseTime 直接對這個字串做替換
+ * （.replace("T"," ").replace("+08:00"," ")），格式不合 tooltip 就顯示半截。
+ *
+ * 資料本身只有日期沒有時間（period_start 是 date），補 00:00:00。
+ */
+function toChartTime(v) {
+	const s = String(v ?? "");
+	if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s;          // 已經是完整時間字串
+	const d = s.slice(0, 10);
+	return /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T00:00:00+08:00` : s;
+}
 
 /**
  * @param {object} spec  模型產出的 ComponentSpec
@@ -137,6 +154,57 @@ export async function generateComponent(rawSpec, { db } = {}) {
 			return { ok: true, chartable: false, sql, chart, stats, reasons: why2, spec,
 			         warnings: spec._warnings,
 			         facts: pts.map((p) => ({ label: p.x, value: p.y, unit: spec.chart?.unit || "" })) };
+		}
+		return { ok: true, chartable: true, sql, chart, stats, spec, warnings: spec._warnings };
+	}
+
+	// time：依 y_axis 歸戶，每個點帶自己的 {x, y}（componentData.go:341-355）。
+	//
+	// x 一定要是 ApexCharts 認得的時間字串。後端送出的格式是
+	// "2006-01-02T15:04:05+08:00"，TimelineSeparateChart 的 parseTime()
+	// 直接對這個格式做字串替換（TimelineSeparateChart.vue:96-98），
+	// 給它 "2026-01-01" 會少掉時間那段，tooltip 會顯示半截。
+	if (spec.query_type === "time") {
+		const tSeries = new Map();
+		for (const r of rows) {
+			const name = r.y_axis;
+			if (!tSeries.has(name)) tSeries.set(name, []);
+			tSeries.get(name).push({ x: toChartTime(r.x_axis), y: Number(r.data) });
+		}
+		const chart = {
+			data: [...tSeries.entries()].map(([name, data]) => ({ name, data })),
+			status: "success",
+		};
+		const stamps = rows.map((r) => String(r.x_axis).slice(0, 10)).sort();
+		const stats = {
+			rows: rows.length,
+			categories: new Set(stamps).size,   // 時間點數
+			series: tSeries.size,
+			total: rows.reduce((a, r) => a + Number(r.data), 0),
+			table: spec.table,
+			period: stamps.length ? `${stamps[0]} – ${stamps[stamps.length - 1]}` : period,
+		};
+
+		// 趨勢圖的門檻跟長條圖不同：兩個點連成一條線不叫趨勢，叫斜率。
+		// 每個數列都要有足夠的點，不是全部加起來夠就好——
+		// 一個數列 8 點、另一個 1 點，平均起來過關，但畫出來是一條線加一個孤點。
+		const thin = [...tSeries.entries()]
+			.filter(([, v]) => v.length < CHARTABLE.minTimePoints)
+			.map(([k, v]) => `${k}（${v.length} 點）`);
+		const whyT = [];
+		if (thin.length) whyT.push(`這些數列的時間點太少，看不出趨勢：${thin.join("、")}`);
+		if (tSeries.size > CHARTABLE.maxSeries) whyT.push(`${tSeries.size} 個數列超過配色能區分的範圍`);
+
+		if (whyT.length) {
+			return {
+				ok: true, chartable: false, sql, chart, stats, reasons: whyT, spec,
+				warnings: spec._warnings,
+				facts: rows.map((r) => ({
+					label: tSeries.size > 1 ? `${String(r.x_axis).slice(0, 10)}・${r.y_axis}` : String(r.x_axis).slice(0, 10),
+					value: Number(r.data),
+					unit: spec.chart?.unit || "",
+				})),
+			};
 		}
 		return { ok: true, chartable: true, sql, chart, stats, spec, warnings: spec._warnings };
 	}

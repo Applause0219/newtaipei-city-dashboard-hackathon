@@ -289,6 +289,23 @@ export function validateSpec(spec, catalog) {
 
 	if (spec.latest_by && !has(spec.latest_by)) push(`欄位不存在：${spec.table}.${spec.latest_by}`);
 
+	// time 的 x 軸必須是真正的日期欄位。
+	//
+	// 這條以前是寫在 prompt 裡的「本專案沒有日期欄位，不要用 time」——
+	// 寬表時代成立，長表建好之後就不成立了（youth_fact.period_start 是 date）。
+	// 規則沒跟著改，代價是所有時間趨勢都只能畫成長條圖，折線圖整個用不到。
+	//
+	// 現在改成程式擋：欄位型別對就放行，不對就講清楚為什麼。
+	if (qt === "time") {
+		const xt = typeOf(spec.x?.column);
+		if (spec.x?.column && xt !== "date") {
+			push(`time 的 x 軸必須是 date 型別的欄位，${spec.x.column} 是 ${xt || "未知型別"}。`
+				+ `年份整數請改用 three_d + ColumnChart。`);
+		}
+		// latest_by 會把整段時間收斂成一期，折線圖只剩一個點
+		if (spec.latest_by) push("time 是看整段時間的變化，不可以設 latest_by（只會剩一個時間點）");
+	}
+
 	const types = spec.chart?.types;
 	if (!Array.isArray(types) || types.length === 0) push("chart.types 至少要一項");
 	else if (REQUIRED_COLUMNS[qt]) {
@@ -439,6 +456,36 @@ export function compileSpec(spec, xOrder) {
 		].filter(Boolean).join("\n");
 	}
 
+	// time：每個點自帶自己的 x，所以**不需要** xOrder 補齊。
+	//
+	// 為什麼可以省掉 three_d 那套 LEFT JOIN：後端編譯 time 時是依 y_axis
+	// 的名稱歸戶，再把 {x, y} 整組 append 進去（componentData.go:341-355），
+	// 不像 three_d 那樣按列序對 category。座標跟著值一起走，錯不了行。
+	//
+	// 也因此 x 軸不轉 varchar——TimelineSeparateChart 要的是可以 new Date()
+	// 的值，轉成字串再 parse 只是多繞一圈。
+	if (spec.query_type === "time") {
+		const tBlocks = spec.series.map((s, i) => {
+			const alias = i === 0 ? " AS x_axis" : "";
+			const yAlias = i === 0 ? " AS y_axis" : "";
+			const dAlias = i === 0 ? " AS data" : "";
+			const w = whereFor(s);
+			return `    SELECT ${x}${alias}, ${lit(s.label)}${yAlias}, ${metricExpr(spec, s.column)}${dAlias}\n` +
+			       `    FROM ${t}\n` + (w ? `    ${w}\n` : "") +
+			       (groupBy ? `    ${groupBy}\n` : "");
+		});
+		const tOrder = spec.series.map((s) => s.label);
+		return [
+			"SELECT x_axis, y_axis, data FROM (",
+			tBlocks.join("    UNION ALL\n"),
+			"  ) t",
+			"  -- 數列順序固定，時間軸照時序",
+			"  ORDER BY",
+			`    ARRAY_POSITION(${arr(tOrder)}, t.y_axis::varchar),`,
+			"    t.x_axis",
+		].join("\n");
+	}
+
 	// 每個數列都必須對 xOrder 裡的**每一個** x 產生一列，缺的補 0。
 	//
 	// 為什麼不能直接 SELECT：不同指標涵蓋的行政區不一樣。
@@ -527,9 +574,12 @@ export function orderProbeSQL(spec, catalog) {
 	});
 
 	// 分類軸（行政區）照數值大小排，讀者一眼看得出高低。
-	// 但時間軸不行——「2004, 2005, 2003, 2006」在趨勢圖上是雜訊。年份照時序。
-	const isYear = catalog?.tables?.[spec.table]?.fields?.[spec.x.column]?.type === "year";
-	const order = isYear ? "x_axis" : "sum(v) DESC, x_axis";
+	// 但時間軸不行——「2004, 2005, 2003, 2006」在趨勢圖上是雜訊。時間照時序。
+	// date 與 year 都算時間軸：long table 的 period_start 是 date，
+	// 只認 year 會讓時間序列的 x 軸依數值大小亂排。
+	const xType = catalog?.tables?.[spec.table]?.fields?.[spec.x.column]?.type;
+	const chronological = xType === "year" || xType === "date";
+	const order = chronological ? "x_axis" : "sum(v) DESC, x_axis";
 
 	return [
 		"SELECT x_axis FROM (",
@@ -545,7 +595,7 @@ const QUERY_TYPE_USE = {
 	two_d:      "一個分類對一個值",
 	three_d:    "一個分類對多個數列",
 	percent:    "占比（分子分母）",
-	time:       "時間序列——需要真正的日期欄位",
+	time:       "時間趨勢（x 軸要 date 欄位）",
 	map_legend: "地圖圖層",
 };
 

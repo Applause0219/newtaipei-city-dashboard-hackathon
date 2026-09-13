@@ -45,8 +45,10 @@ const RULES = `規則：
    不要挑一邊然後把組件命名成涵蓋兩邊——那會產生一張名實不符的圖。
 10. query_type 與 chart.types 只能從下方清單挑。清單以外的圖表元件不存在，
    寫了會被擋下（例如沒有 LineChart）。
-11. 目錄中的「年份」是整數年，不是日期欄位，所以時間趨勢仍用 three_d 搭 ColumnChart，
-   不要用 time——time 需要真正的日期欄位，本專案的表都沒有。
+11. time 需要真正的 date 欄位。長表的 period_start 就是 date，可以用；
+   寬表的「年份」是整數年，不是日期，那種要用 three_d 搭 ColumnChart。
+   用錯型別驗證器會擋下並告訴你該用哪一種。
+   用 time 時不要設 latest_by——那會把整段時間收斂成一個點。
 
 12. 要把「同一個欄位、不同篩選值」畫成多個數列時（最常見是男女對照），
    把條件放進**該數列自己的** series[].filter，不要放進最外層的 filters——

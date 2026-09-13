@@ -433,3 +433,130 @@ system prompt 也補了第三條規則：比較一定要兩邊都查，
 - 生成的組件仍是記憶體內，重整就消失
 - `/api/insight`（藍圖 §9–§12 的完整管線，約 2,400 行）沒有前端入口，
   而且還指向舊的寬表，沒接上 70 個資料集的長表
+
+---
+
+## 9/13 圖表型別：從兩種變成整套
+
+起因是比對組員那條路線（`feat/youth-ai-agent`，Python + PydanticAI）之後的一個
+反直覺發現：**他的 agent 能用的圖表其實比我們少**（`tools.py` 的
+`_CHART_TYPES_BY_QUERY` 只有 10 種，我們的 `ALLOWED_CHARTS` 有 20 種），
+但畫面上看起來豐富得多。追下去是三個不同的原因，只有一個是真的技術差距。
+
+### 根因一：agent 從來沒看過圖表清單
+
+```
+$ grep -o "DistrictChart\|ColumnChart\|BarChart\|..." local-demo/ai/agent.js | sort | uniq -c
+   1 ColumnChart
+   1 DistrictChart
+```
+
+整份 agent system prompt 只出現過這兩個名字，就在那個 ComponentSpec 範例裡。
+模型照著範例填，於是每一題畫出來的圖都一樣。
+
+而把清單組成 prompt 的 `chartOptionsForPrompt()` 早就寫好了——它只被
+`spec-prompt.js:111` 用到，那是**舊的一次性管線**。agent 這條路從來沒接上。
+`build_component` 的工具說明也只寫「spec: ComponentSpec 物件」，沒有 schema。
+
+這是典型的「兩條路各自演化，共用的那塊只有一邊接線」。
+
+**修法**：`agent.js` 接上 `chartOptionsForPrompt()`，再加一段「怎麼挑圖」的
+規則。規則不是憑感覺寫的，是拉官方 API 的 223 個組件統計出來的實際用法：
+
+| query_type | 前三名 |
+|---|---|
+| two_d（178 次） | BarChart 63、ColumnChart 32、DistrictChart 31 |
+| three_d（119 次） | ColumnChart 37、DistrictChart 20、BarPercentChart 18 |
+| time（34 次） | TimelineSeparate 18、TimelineStacked 8、ColumnLine 8 |
+
+`BarChart` 是官方最常用的一種，我們一次都沒用過。範例裡的 chart.types 也從
+`["DistrictChart","ColumnChart"]` 改成 `["BarChart","DistrictChart"]`——
+那題問的是「哪一區最貴」，本來就是排名問題，29 個區塗在地圖上很難比大小。
+
+### 根因二：一條過時的規則把折線圖封死了
+
+`spec-prompt.js` 規則 11 寫著：
+
+> time 需要真正的日期欄位，本專案的表都沒有。
+
+寬表時代成立。長表建好之後就不成立了：
+
+```
+$ psql -d dashboard -c "\d youth_fact"
+ period_start   | date
+```
+
+規則沒跟著改，代價是**所有時間趨勢都只能畫成長條圖**，而折線圖在官方 223 個
+組件裡被用了 34 次，`TimelineSeparateChart` 單獨 18 次是第二常用的圖表。
+組員那邊有 `time`，我們沒有——這是三個原因裡唯一真的技術差距。
+
+**修法**：規則改成講型別（date 可以、整數年不行），並且**改由程式擋**而不是
+靠 prompt 自律。`validateSpec` 新增兩條：
+
+- `time` 的 `x.column` 型別必須是 `date`，不是就告訴模型改用 `three_d`
+- `time` 不可以設 `latest_by`——那會把整段時間收斂成一個點
+
+`compileSpec` 加了獨立的 time 分支。它跟 three_d 有個關鍵差異：
+**不需要 xOrder 補齊**。後端編譯 time 是依 `y_axis` 名稱歸戶再 append
+`{x,y}`（`componentData.go:341-355`），不像 three_d 按列序對 category。
+座標跟著值一起走，不可能對錯行。也因此 x 軸不轉 varchar——前端要的是
+能 `new Date()` 的值。
+
+時間格式必須是 Go 那個 `"2006-01-02T15:04:05+08:00"`：
+`TimelineSeparateChart.vue:96-98` 的 `parseTime` 直接對這個格式做字串替換，
+給它 `"2026-01-01"` tooltip 會顯示半截。
+
+順手修掉 `orderProbeSQL` 只認 `year` 不認 `date` 的問題——長表的時間軸
+本來會依數值大小亂排。
+
+趨勢圖的可畫門檻也跟長條圖不同：**每個數列**至少 3 個時間點，不是全部
+加起來夠就好。一個數列 8 點、另一個 1 點，總數過關，畫出來是一條線
+旁邊一個孤點。
+
+### 根因三：畫面上那些漂亮的圖根本不是 agent 畫的
+
+組員的 commit `103f3df`「匯入 Taipei dashboard 圖表組件與範例資料」把官方
+demo 資料庫拉了進來（`db-sample-data/dashboard-demo.sql` 是 655 MB 的 LFS
+檔）。桑基圖、旭日圖、四分位圖那些是**預先建好的官方組件**，不是問答生成的。
+
+這個沒什麼好修的，記下來是為了避免拿它當基準線比錯對象。
+
+### 順帶記錄：兩條路線的思考過程差在哪
+
+組員那邊**有**完整的 SSE 事件流（`api.py` 的 `/api/v1/agent/stream`），
+ChatBox 也有「思考過程（N 步）」摺疊區。不是沒做，是標籤內容不同。
+他的 `chatStore.js` 用正則從 SQL 裡抓表名：
+
+```js
+const m = ev.args.query.match(/FROM\s+([\w."]+)/i);
+```
+
+所以使用者看到 `執行 SQL → youth_fact` / `取得結果（23 筆）`。
+我們看到的是 `correlate_indicators（population_count、rental_contract_rent_median）
+→ r=0.665（強・正相關）n=23`。
+
+**他的是進度條，我們的是稽核軌跡。** 他的畫面說「它在忙」，我們的說
+「它問了什麼、拿回什麼」。這個差別不是工程量，是「工具切多細」的後果：
+他只有 `execute_sql` 一個查詢工具，能顯示的就只有表名。
+
+### 實測
+
+live agent 走完整條路：
+
+```
+[板橋和新莊的青年人口，過去幾年的走勢是怎麼變的？]  5 步 / 29s
+   → 板橋區 vs 新莊區青年人口逐年走勢｜time｜TimelineSeparateChart｜chartable=true
+```
+
+數字與 psql 直查逐筆一致（板橋 2018/2019/2020 = 98022 / 95450 / 92024）。
+
+### 測試
+
+`182` 項全數通過（原 165 + 新增 17）。新增 `charttypes.test.mjs`：
+
+- A 組 4 項：**prompt 必須看得見圖表清單**——這是根因一的回歸測試，
+  門檻訂在「至少 8 種」，退化前是 2 種
+- B 組 4 項：time 的守門（x 型別、latest_by、圖表配對）
+- C 組 6 項：time 的 SQL 形狀與實際資料（不補零、照時序、時間格式、
+  數列點數不足時指名是哪一個）
+- D 組 2 項：two_d / three_d 沒被改壞

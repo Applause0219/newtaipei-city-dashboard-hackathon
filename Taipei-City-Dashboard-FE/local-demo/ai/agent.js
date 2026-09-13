@@ -14,6 +14,7 @@
 // 事件流都是現成的，而事件流正好就是藍圖 §25 要的那個漏斗畫面。
 import { loadCatalog, youthIndicatorsForPrompt } from "./catalog.js";
 import { buildTools } from "./agent-tools.js";
+import { chartOptionsForPrompt } from "./component-spec.js";
 import "./load-secrets.js";
 
 const MODEL_ID = process.env.BEDROCK_MODEL || "us.anthropic.claude-sonnet-4-6";
@@ -32,7 +33,7 @@ const MODEL = {
 	maxTokens: 4096,
 };
 
-function systemPrompt(catalog) {
+export function systemPrompt(catalog) {
 	return [
 		"你是新北市青年儀表板的分析助理。使用者問青年相關的問題，你負責找資料、建圖表。",
 		"",
@@ -96,6 +97,30 @@ function systemPrompt(catalog) {
 		"- gender 篩不篩看該指標的 genders：有 total 就必須篩 total（不篩會重複計算",
 		"  兩倍），沒有 total 就不要篩（硬篩會得到空結果）。",
 		"",
+		"## query_type 與可用圖表",
+		"",
+		chartOptionsForPrompt(),
+		"",
+		"chart.types 可以放兩個，使用者能在組件卡片上切換；第一個是預設顯示的。",
+		"",
+		"### 怎麼挑圖",
+		"",
+		"**不要每次都用 DistrictChart + ColumnChart。** 下面是官方 223 個組件的實際用法，",
+		"照問題的形狀挑：",
+		"",
+		"- 比高低排名，區名要讀得清楚 → **BarChart**（橫向）。官方用了 63 次，是最常用的一種。",
+		"- 想看地理分布、哪一帶聚集 → **DistrictChart**（新北地圖）",
+		"- 分類 8 個以內、重點是佔比 → **DonutChart**",
+		"- 一個分類對多個數列（男 vs 女、2021 vs 2026） → **ColumnChart**",
+		"- 多個數列但要看相對佔比而非絕對值 → **BarPercentChart**",
+		"- 兩個維度的密度（行政區 × 年齡組距、行政區 × 年份） → **HeatmapChart**",
+		"- 分類多、想看層級與大小 → **TreemapChart**",
+		"- 3–6 個面向的綜合比較（單一行政區的各項指標） → **RadarChart**",
+		"- 時間趨勢 → **TimelineSeparateChart**（各數列獨立折線）或 **TimelineStackedChart**（堆疊）",
+		"- 單一個數字要放大講（全市總計、某個比率） → **IndicatorChart** 或 **TextUnitChart**",
+		"",
+		"挑不出來就用 BarChart，不要預設 DistrictChart——29 個區塗在地圖上很難比大小。",
+		"",
 		"## ComponentSpec 範例",
 		"",
 		"```json",
@@ -114,7 +139,9 @@ function systemPrompt(catalog) {
 				filter: { column: "indicator_id", eq: "rental_contract_rent_median" },
 			}],
 			latest_by: "period_start",
-			chart: { types: ["DistrictChart", "ColumnChart"], unit: "元/月" },
+			// 這題問的是「哪一區最貴」，是排名問題，所以 BarChart 在前。
+			// 地圖放第二個，使用者想看分布時自己切。
+			chart: { types: ["BarChart", "DistrictChart"], unit: "元/月" },
 			short_desc: "各行政區最新一期租金中位數",
 			long_desc: "含資料限制的完整說明",
 		}, null, 1),
@@ -139,6 +166,38 @@ function systemPrompt(catalog) {
 				{ label: "2021", column: "value", filter: { column: "period_start", eq: "2021-01-01" } },
 				{ label: "2026", column: "value", filter: { column: "period_start", eq: "2026-01-01" } },
 			],
+		}, null, 1),
+		"```",
+		"",
+		"### 完整的時間趨勢（折線圖）",
+		"",
+		"想看「逐年怎麼走」而不是「頭尾差多少」時，用 time：x 軸放 period_start，",
+		"每個數列一條線。**不要設 latest_by**（那會只剩一個點），也不要把年份",
+		"當成分類軸塞進 three_d——那畫出來是一排長條，看不出走勢。",
+		"",
+		"```json",
+		JSON.stringify({
+			index: "youth_pop_trend",
+			name: "青年人口逐年變化",
+			city: "metrotaipei",
+			table: "youth_fact_named",
+			query_type: "time",
+			x: { column: "period_start" },
+			aggregate: "sum",
+			filters: [
+				{ column: "area_level", eq: "district" },
+				{ column: "dataset_id", eq: "youth_pop_single_age" },
+				{ column: "gender", eq: "total" },
+				{ column: "age_lower", gte: 15 },
+				{ column: "age_upper", lte: 29 },
+			],
+			series: [
+				{ label: "板橋區", column: "value", filter: { column: "area_name", eq: "板橋區" } },
+				{ label: "新莊區", column: "value", filter: { column: "area_name", eq: "新莊區" } },
+			],
+			chart: { types: ["TimelineSeparateChart"], unit: "人" },
+			short_desc: "兩區青年人口的逐年走勢",
+			long_desc: "含資料限制的完整說明",
 		}, null, 1),
 		"```",
 		"",
