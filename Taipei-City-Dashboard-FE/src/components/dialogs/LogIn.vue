@@ -85,7 +85,7 @@ function handleClose() {
         </div>
         <div>
           <h1>{{ VITE_APP_TITLE }}</h1>
-          <h2>Taipei City Dashboard</h2>
+          <h2>Youth City Dashboard</h2>
         </div>
       </div>
       <div
@@ -124,7 +124,7 @@ function handleClose() {
           rel="noopener"
           @click.prevent="openExternal('https://tuic.gov.taipei/zh/works/dashboard')"
         >
-          臺北城市儀表板
+          青年城市儀表板
         </a>
         的
         <a
@@ -145,7 +145,7 @@ function handleClose() {
       >
         TUIC Igor Ann Iima Chu Jack 2023-2024
       </p>
-      <p>《讓臺北城市儀表板成為您的儀表板》</p>
+      <p>《讓青年城市儀表板成為您的儀表板》</p>
     </div>
   </DialogContainer>
 </template>

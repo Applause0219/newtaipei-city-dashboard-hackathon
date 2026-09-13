@@ -66,7 +66,7 @@ const RULES = `規則：
 
 export function buildSpecPrompt(catalog, question) {
 	return [
-		"你是臺北城市儀表板的組件設計助理。",
+		"你是青年城市儀表板的組件設計助理。",
 		"使用者用自然語言描述想看的東西，你要挑出該用哪張表、哪些欄位、怎麼分組，",
 		"輸出一份 ComponentSpec。",
 		"",

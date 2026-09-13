@@ -21,44 +21,65 @@ const { user } = storeToRefs(authStore);
 
 const userMessage = ref("");
 const chatAreaRef = ref(null);
-const isStickyOpen = ref(false);
 const dashboardCreationLoading = ref(false);
+const depthLevel = ref(1);
+const depthOptions = [
+	{ label: "低", value: 1 },
+	{ label: "中", value: 3 },
+	{ label: "高", value: 5 },
+];
 
-const qaBtnHandler = async (text, relations) => {
+const clearChat = () => {
+	sessionStorage.removeItem("chatData");
+	chatData.value.splice(1);
+};
+
+const qaBtnHandler = async (text, relations, chat) => {
 	if (text === "建立儀表板") {
-		if (dashboardCreationLoading.value === true) return;
+		if (dashboardCreationLoading.value || chat?.dashboardCreated) return;
 		dashboardCreationLoading.value = true;
-		// 確認個人儀表板是否超過20個
-		const response = await http.get(`/dashboard/`);
-		if (response.data?.data?.personal?.length > 20) {
-			addChatData({
-				role: "bot",
-				content:
-					"您的個人儀表板已超出限制 20 個，請先移除既有儀表板後，重新執行本功能！",
-			});
-			dashboardCreationLoading.value = false;
-			return;
-		}
-		const components = Array.from(new Set(relations.map((r) => r.id))).map(
-			(id) => ({ id }),
-		);
+		try {
+			const response = await http.get(`/dashboard/`);
+			const personalDashboards = response.data?.data?.personal ?? [];
+			if (personalDashboards.length > 20) {
+				addChatData({
+					role: "bot",
+					content:
+						"您的個人儀表板已超出限制 20 個，請先移除既有儀表板後，重新執行本功能！",
+				});
+				return;
+			}
+			const components = Array.from(new Set(relations.map((r) => r.id))).map(
+				(id) => ({ id }),
+			);
 
-		if (user.value.user_id) {
-			editDashboard.value = {
-				index: "",
-				name: "推薦儀表板",
-				icon: "star",
-				components: components,
-			};
-			await createDashboard();
-			saveChatLog("建立儀表板", "使用者成功建立儀表板!");
-		} else {
+			if (user.value.user_id) {
+				const existing = personalDashboards.filter((d) => d.name.startsWith("推薦儀表板")).length;
+				const dashName = existing > 0 ? `推薦儀表板 (${existing + 1})` : "推薦儀表板";
+				editDashboard.value = {
+					index: "",
+					name: dashName,
+					icon: "star",
+					components: components,
+				};
+				await createDashboard();
+				if (chat) chat.dashboardCreated = true;
+				saveChatLog("建立儀表板", "使用者成功建立儀表板!");
+			} else {
+				addChatData({
+					role: "bot",
+					content: "請先登入會員以使用此功能喔！",
+				});
+			}
+		} catch (error) {
+			console.error("createDashboard error:", error);
 			addChatData({
 				role: "bot",
-				content: "請先登入會員以使用此功能喔！",
+				content: "建立儀表板失敗，請稍後再試！",
 			});
+		} finally {
+			dashboardCreationLoading.value = false;
 		}
-		dashboardCreationLoading.value = false;
 	}
 };
 
@@ -67,16 +88,12 @@ const sendBtnHandler = (text) => {
 	addQueryData({
 		role: "user",
 		content: text,
-	});
+	}, depthLevel.value);
 	userMessage.value = "";
 };
 
-const toggleSticky = () => {
-	isStickyOpen.value = !isStickyOpen.value;
-};
-
 watch(
-	() => chatData.value.length,
+	chatData,
 	async () => {
 		await nextTick();
 		const chat = chatAreaRef.value;
@@ -98,14 +115,23 @@ const emit = defineEmits(["close"]);
   <div class="chat-widget">
     <!-- 標題 -->
     <div class="header">
-      <h3>臺北城市儀表板小幫手</h3>
-      <button
-        class="close-btn"
-        aria-label="關閉小幫手"
-        @click="emit('close')"
-      >
-        ×
-      </button>
+      <h3>青年城市儀表板小幫手</h3>
+      <div class="header-actions">
+        <button
+          class="clear-btn"
+          title="清除對話紀錄"
+          @click="clearChat"
+        >
+          &#x21bb;
+        </button>
+        <button
+          class="close-btn"
+          aria-label="關閉小幫手"
+          @click="emit('close')"
+        >
+          ×
+        </button>
+      </div>
     </div>
 
     <!-- 聊天區 -->
@@ -113,25 +139,6 @@ const emit = defineEmits(["close"]);
       ref="chatAreaRef"
       class="chat-area scrollbar-custom"
     >
-      <!-- 置頂訊息 -->
-      <div class="chat-message sticky-message">
-        <div
-          class="sticky-header"
-          @click="toggleSticky"
-        >
-          <span>置頂公告：小幫手使用須知</span>
-          <button class="toggle-btn">
-            {{ isStickyOpen ? "-" : "+" }}
-          </button>
-        </div>
-        <div
-          v-show="isStickyOpen"
-          class="sticky-body"
-        >
-          <span>小幫手會依據您輸入的內容，自動檢索本站臺的組件資料庫，並回傳相似度較高的組件清單，協助您快速找到符合需求的元件或資訊。<br><br>
-            目前小幫手僅提供組件比對與分析服務，不支援一般聊天功能。如造成不便，敬請見諒！</span>
-        </div>
-      </div>
       <div
         v-for="chat in chatData"
         :key="chat.id"
@@ -151,6 +158,62 @@ const emit = defineEmits(["close"]);
               class="message--bubble"
             >
               <p>{{ chat.content }}</p>
+            </div>
+            <!-- 思考過程 -->
+            <details
+              v-if="chat.thinkingSteps && chat.thinkingSteps.length"
+              class="thinking-section"
+              :open="!chat.thinkingDone"
+            >
+              <summary>
+                {{ chat.thinkingDone ? `思考過程（${chat.thinkingSteps.length} 步）` : `思考中...（${chat.thinkingSteps.length} 步）` }}
+              </summary>
+              <div class="thinking-timeline">
+                <div
+                  v-for="(step, idx) in chat.thinkingSteps"
+                  :key="idx"
+                  :class="['thinking-step', `step-${step.type}`]"
+                >
+                  <span class="step-icon">
+                    {{ step.type === 'call' ? '🔧' : step.type === 'result' ? '📄' : '💬' }}
+                  </span>
+                  <span class="step-label">{{ step.label }}</span>
+                </div>
+              </div>
+            </details>
+            <!-- 洞察卡片 -->
+            <div
+              v-if="chat.insightDetails && chat.insightDetails.length"
+              class="insight-list"
+            >
+              <div
+                v-for="(ins, idx) in chat.insightDetails"
+                :key="idx"
+                class="insight-card"
+              >
+                <div class="insight-title">
+                  {{ idx + 1 }}. {{ ins.title || '(洞察)' }}
+                </div>
+                <p
+                  v-if="ins.claim"
+                  class="insight-claim"
+                >
+                  {{ ins.claim }}
+                </p>
+                <p
+                  v-if="ins.narrative"
+                  class="insight-narrative"
+                >
+                  {{ ins.narrative }}
+                </p>
+                <details
+                  v-if="ins.source_sql"
+                  class="insight-sql"
+                >
+                  <summary>📋 SQL</summary>
+                  <pre><code>{{ ins.source_sql }}</code></pre>
+                </details>
+              </div>
             </div>
             <!-- 表格區 -->
             <div
@@ -214,9 +277,10 @@ const emit = defineEmits(["close"]);
               <button
                 v-for="btn in chat.button"
                 :key="btn.id"
-                @click="qaBtnHandler(btn.text, chat.relations)"
+                :disabled="dashboardCreationLoading || chat.dashboardCreated"
+                @click="qaBtnHandler(btn.text, chat.relations, chat)"
               >
-                {{ btn.text }}
+                {{ chat.dashboardCreated ? "已建立儀表板" : btn.text }}
               </button>
             </div>
           </div>
@@ -238,6 +302,21 @@ const emit = defineEmits(["close"]);
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 思考深度 -->
+    <div class="depth-bar">
+      <span class="depth-label">思考深度</span>
+      <div class="depth-segments">
+        <button
+          v-for="opt in depthOptions"
+          :key="opt.value"
+          :class="{ active: depthLevel === opt.value }"
+          @click="depthLevel = opt.value"
+        >
+          {{ opt.label }}
+        </button>
       </div>
     </div>
 
@@ -320,6 +399,24 @@ $radius-20: 20px;
 			margin: 0;
 		}
 
+		.header-actions {
+			display: flex;
+			align-items: center;
+			gap: 0.25rem;
+		}
+
+		.clear-btn {
+			background: none;
+			border: none;
+			color: $white;
+			cursor: pointer;
+			opacity: 0.6;
+			padding: 4px;
+			font-size: 20px;
+			line-height: 1;
+			&:hover { opacity: 1; }
+		}
+
 		.close-btn {
 			flex-shrink: 0;
 			width: 28px;
@@ -331,6 +428,9 @@ $radius-20: 20px;
 			line-height: 1;
 			color: $white;
 			border-radius: 50%;
+			background: none;
+			border: none;
+			cursor: pointer;
 			opacity: 0.7;
 			transition: opacity 0.2s, background-color 0.2s;
 
@@ -347,44 +447,6 @@ $radius-20: 20px;
 		padding: 0.75rem;
 		overflow-y: auto;
 		background: $bg-dark;
-
-		.chat-message {
-			padding: 4px 10px;
-			margin: 0px 8px;
-			border-radius: 8px;
-			background-color: $bg-dark;
-		}
-
-		// 置頂訊息
-		.sticky-message {
-			border: 1px solid #ffffff;
-			position: sticky;
-			top: 0;
-			z-index: 10;
-
-			.sticky-header {
-				display: flex;
-				font-weight: bold;
-				justify-content: space-between;
-				align-items: center;
-				cursor: pointer;
-				padding: 8px 12px;
-			}
-
-			.sticky-body {
-				padding: 8px 12px;
-				font-weight: 400;
-				font-size: 14px;
-			}
-
-			.toggle-btn {
-				background: none;
-				border: none;
-				font-size: 14px;
-				cursor: pointer;
-				color: #ffffff;
-			}
-		}
 
 		.message {
 			padding: 8px;
@@ -466,6 +528,127 @@ $radius-20: 20px;
 						}
 					}
 
+					.thinking-section {
+						border: 1px solid #555;
+						border-radius: 8px;
+						background: #1a1c1e;
+						overflow: hidden;
+
+						summary {
+							cursor: pointer;
+							padding: 10px 14px;
+							color: #ccc;
+							font-size: 14px;
+							font-weight: 600;
+							user-select: none;
+							&:hover { color: #fff; }
+						}
+
+						.thinking-timeline {
+							padding: 0 14px 8px;
+							max-height: 220px;
+							overflow-y: auto;
+
+							&::-webkit-scrollbar {
+								width: 4px;
+							}
+							&::-webkit-scrollbar-thumb {
+								background: #666;
+								border-radius: 4px;
+							}
+
+							.thinking-step {
+								display: flex;
+								align-items: center;
+								gap: 8px;
+								height: 32px;
+								border-bottom: 1px solid #2a2c2e;
+								&:last-child { border-bottom: none; }
+
+								.step-icon {
+									flex-shrink: 0;
+									font-size: 13px;
+									width: 18px;
+									text-align: center;
+								}
+
+								.step-label {
+									color: #ccc;
+									font-size: 13px;
+									white-space: nowrap;
+									overflow: hidden;
+									text-overflow: ellipsis;
+								}
+
+								&.step-call .step-label { color: #6fb3ff; }
+								&.step-result .step-label { color: #7dd98b; }
+							}
+						}
+					}
+
+					.insight-list {
+						display: flex;
+						flex-direction: column;
+						gap: 8px;
+
+						.insight-card {
+							border: 1px solid #5a9cf8;
+							border-radius: 8px;
+							background: $card-bg;
+							padding: 10px 14px;
+
+							.insight-title {
+								font-weight: 700;
+								font-size: 14px;
+								color: #5a9cf8;
+								margin-bottom: 4px;
+							}
+
+							.insight-claim {
+								color: $white;
+								font-size: 14px;
+								margin: 4px 0;
+								line-height: 1.5;
+							}
+
+							.insight-narrative {
+								color: #bbb;
+								font-size: 13px;
+								margin: 4px 0;
+								line-height: 1.4;
+							}
+
+							.insight-sql {
+								margin-top: 6px;
+
+								summary {
+									cursor: pointer;
+									color: #888;
+									font-size: 12px;
+									user-select: none;
+									&:hover { color: #aaa; }
+								}
+
+								pre {
+									background: #1a1a1a;
+									border-radius: 4px;
+									padding: 8px;
+									margin: 4px 0 0;
+									overflow: auto;
+									max-height: 300px;
+
+									code {
+										color: #8be9fd;
+										font-size: 11px;
+										font-family: monospace;
+										white-space: pre-wrap;
+										word-break: break-word;
+									}
+								}
+							}
+						}
+					}
+
 					.message--button {
 						display: flex;
 						gap: 0.5rem;
@@ -492,12 +675,56 @@ $radius-20: 20px;
 		}
 	}
 
+	.depth-bar {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.4rem 1.125rem 0;
+		background: $panel-bg;
+
+		.depth-label {
+			color: #999;
+			font-size: 12px;
+			flex-shrink: 0;
+		}
+
+		.depth-segments {
+			display: flex;
+			border: 1px solid #666;
+			border-radius: 6px;
+			overflow: hidden;
+
+			button {
+				background: transparent;
+				color: #999;
+				border: none;
+				padding: 2px 12px;
+				font-size: 12px;
+				cursor: pointer;
+				transition: background 0.15s, color 0.15s;
+
+				&:not(:last-child) {
+					border-right: 1px solid #666;
+				}
+
+				&.active {
+					background: #5a9cf8;
+					color: $white;
+				}
+
+				&:hover:not(.active) {
+					background: rgba(255, 255, 255, 0.08);
+				}
+			}
+		}
+	}
+
 	.input-area {
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		gap: 0.5rem;
-		padding: 1.5rem 1.125rem;
+		padding: 0.75rem 1.125rem 1.5rem;
 		background: $panel-bg;
 
 		input[type="text"] {

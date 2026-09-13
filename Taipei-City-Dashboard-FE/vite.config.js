@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import viteCompression from "vite-plugin-compression";
+import { injectLocalComponents } from "./local-demo/inject.js";
 
 // 嘗試讀取環境變數，若不存在則回傳 false
 let isDockerCompose = process?.env.DOCKER_COMPOSE === "true"; // eslint-disable-line no-undef
@@ -36,7 +37,7 @@ const serverConfig = isDockerCompose
 	};
 
 export default defineConfig({
-	plugins: [vue(), viteCompression()],
+	plugins: [vue(), viteCompression(), injectLocalComponents()],
 	build: {
 		rollupOptions: {
 			output: {

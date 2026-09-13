@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import http from "../router/axios";
 
@@ -10,7 +10,7 @@ export const useChatStore = defineStore('chat', () => {
       		role: 'bot',
 	  		isDefault: true,
       		content:
-				"您好，我是【臺北城市儀表板】小幫手，很高興為您服務！\n 您可以： \n\n • 點擊左側既有的儀表板主題，快速查看各主題內容 \n • 輸入您感興趣的主題描述，我會推薦相關組件，並協助組建最適合的儀表板 \n • 點擊推薦組件清單中的主題按鈕，即可前往查看該主題儀表板  \n\n 如果有想了解的內容，歡迎直接告訴我，我會盡力協助！\n\n 📩 聯絡信箱：tuic@gov.taipei \n 🏢 臺北大數據中心 \n\n",
+				"您好，我是【青年城市儀表板】小幫手，很高興為您服務！\n 您可以： \n\n • 點擊左側既有的儀表板主題，快速查看各主題內容 \n • 輸入您感興趣的主題描述，我會推薦相關組件，並協助組建最適合的儀表板 \n • 點擊推薦組件清單中的主題按鈕，即可前往查看該主題儀表板  \n\n 如果有想了解的內容，歡迎直接告訴我，我會盡力協助！\n\n 📩 聯絡信箱：tuic@gov.taipei \n 🏢 臺北大數據中心 \n\n",
 		},
   	];
 
@@ -41,7 +41,7 @@ export const useChatStore = defineStore('chat', () => {
 
 				Object.entries(dashMap).forEach(([city,cityDashboards]) => {
 					cityDashboards.forEach((dash) => {
-						if (dash.components.includes(comp.id)) {
+						if (dash.components && dash.components.includes(comp.id)) {
 							if (!matched.some((m) => m.index === dash.index && m.city === city)) {
 								matched.push({
 									name: dash.name,
@@ -80,12 +80,15 @@ export const useChatStore = defineStore('chat', () => {
     	chatData.value.push({ id: chatData.value.length + 1, isDefault: false, ...newChatData });
   	};
 
-  	const addQueryData = async (newChatData) => {
+	const addQueryData = async (newChatData, maxInsights = 3) => {
 
     	chatData.value.push({ id: chatData.value.length + 1, isDefault: false, ...newChatData });
 
 		recommendComponents.value = [];
 		let topK = null;
+
+		const statusMsg = { id: chatData.value.length + 1, role: 'bot', isDefault: false, content: '🔍 正在搜尋青年資料庫...' };
+		chatData.value.push(statusMsg);
 
 		try {
 			const response = await http.post(
@@ -112,7 +115,7 @@ export const useChatStore = defineStore('chat', () => {
 
 				Object.entries(dashMap).forEach(([city,cityDashboards]) => {
 					cityDashboards.forEach((dash) => {
-						if (dash.components.includes(comp.id)) {
+						if (dash.components && dash.components.includes(comp.id)) {
 							// 避免同名主題重複加入
 							if (!matched.some((m) => m.index === dash.index && m.city === city)) {
 								matched.push({
@@ -155,14 +158,17 @@ export const useChatStore = defineStore('chat', () => {
 			// 把 result 蓋回去 recommendComponents
 			recommendComponents.value = result
 
-		} catch (error) { 
+		} catch (error) {
 			console.error("VectorAnalysisError :", error);
 		}
 
+		const statusIdx = chatData.value.indexOf(statusMsg);
+		if (statusIdx !== -1) chatData.value.splice(statusIdx, 1);
+
 		if (recommendComponents.value && recommendComponents.value?.length > 0) {
 			topK = [...recommendComponents.value].sort((a, b) => b.score - a.score);
-			chatData.value.push({ id: chatData.value.length + 1, role: 'bot', isDefault: false, button: [{ id:1, text:'建立儀表板' }], content: `您好 😊 \n 以下是根據您的問題，自動為您推薦的「組件清單」。您可以將這些組件整批加入「個人儀表板」，方便日後快速查看與使用。\n`, relations: topK });
-			chatData.value.push({ id: chatData.value.length + 1, role: 'bot', isDefault: false, content: `若您有任何新的查詢或想深入探索的內容，都可以隨時在對話框告訴我～\n 我很樂意再協助您 💬✨` });
+			chatData.value.push({ id: chatData.value.length + 1, role: 'bot', isDefault: false, content: `找到 ${topK.length} 份相關資料集，Agent 正在建立洞察組件。\n`, relations: topK });
+			startAgentAnalysis(newChatData.content, maxInsights);
 		} else {
 			chatData.value.push({ id: chatData.value.length + 1, role: 'bot', isDefault: false, content: `很抱歉，您提供的描述沒有相似組件，請繼續提問 ! ` });
 		}
@@ -170,6 +176,94 @@ export const useChatStore = defineStore('chat', () => {
 		// 分析結束後紀錄問答log
 		saveChatLog(newChatData.content, recommendComponents.value);
   	};
+
+	const _toolLabel = (name) => {
+		const labels = { execute_sql: '執行 SQL 查詢', publish_component: '發佈組件' };
+		return labels[name] || name;
+	};
+
+	const startAgentAnalysis = (question, maxInsights = 3) => {
+		const depthLabel = { 1: '低', 3: '中', 5: '高' }[maxInsights] || '中';
+		const agentMsg = reactive({
+			id: chatData.value.length + 1, role: 'bot', isDefault: false,
+			content: `🤖 Agent 正在深度分析（${depthLabel}）...`,
+			thinkingSteps: [],
+			thinkingDone: false,
+		});
+		chatData.value.push(agentMsg);
+
+		const baseUrl = import.meta.env.VITE_API_URL === '/api/dev'
+			? '/api/dev' : '/api';
+		const url = `${baseUrl}/agent/stream?question=${encodeURIComponent(question)}&max_insights=${maxInsights}`;
+		const es = new EventSource(url);
+
+		es.onmessage = async (e) => {
+			if (e.data === '[DONE]') {
+				es.close();
+				agentMsg.thinkingDone = true;
+				return;
+			}
+			try {
+				const ev = JSON.parse(e.data);
+				if (ev.type === 'tool_call') {
+					let suffix = '';
+					if (ev.tool === 'execute_sql' && ev.args?.query) {
+						const m = ev.args.query.match(/FROM\s+([\w."]+)/i);
+						suffix = m ? m[1].replace(/"/g, '') : '';
+					} else if (ev.tool === 'publish_component' && ev.args?.name) {
+						suffix = ev.args.name;
+					}
+					agentMsg.thinkingSteps.push({
+						type: 'call',
+						label: `${_toolLabel(ev.tool)}${suffix ? ' → ' + suffix : ''}`,
+					});
+					agentMsg.content = `🤖 Agent 呼叫工具：${_toolLabel(ev.tool)}`;
+				} else if (ev.type === 'tool_result') {
+					const s = typeof ev.content === 'string' ? ev.content : '';
+					const rowMatch = s.match(/row_count=(\d+)/);
+					const hint = rowMatch ? `${rowMatch[1]} 筆` : '完成';
+					agentMsg.thinkingSteps.push({
+						type: 'result',
+						label: `取得結果（${hint}）`,
+					});
+					agentMsg.content = `🤖 Agent 取得結果，繼續分析...`;
+				} else if (ev.type === 'status') {
+					agentMsg.thinkingSteps.push({ type: 'status', label: ev.message });
+					agentMsg.content = `🤖 ${ev.message}`;
+				} else if (ev.type === 'result') {
+					const data = ev.data || {};
+					const insights = data.insights || [];
+					const published = data.published || [];
+					if (insights.length > 0) {
+						agentMsg.content = `📊 Agent 分析完成！發現 ${insights.length} 項洞察：`;
+						agentMsg.insightDetails = insights;
+					} else {
+						agentMsg.content = `📊 Agent 分析完成。\n${data.report_markdown || ''}`.trim();
+					}
+					if (published.length > 0) {
+						const responses = await Promise.all(published.map((index) =>
+							http.get('/component/', { params: { searchbyindex: index } })
+						));
+						agentMsg.relations = responses
+							.flatMap((response) => response.data?.data || [])
+							.filter((component) => published.includes(component.index))
+							.map((component) => ({ ...component, score: 1 }));
+						if (agentMsg.relations.length > 0) {
+							agentMsg.button = [{ id: 1, text: '建立儀表板' }];
+						}
+					}
+				} else if (ev.type === 'error') {
+					agentMsg.content = `⚠️ Agent 分析遇到問題：${ev.detail}`;
+				}
+			} catch { /* ignore parse errors */ }
+		};
+
+		es.onerror = () => {
+			agentMsg.content += '\n(串流已中斷)';
+			agentMsg.thinkingDone = true;
+			es.close();
+		};
+	};
 
 	const saveChatLog = async(question, answer) => {
 		try {

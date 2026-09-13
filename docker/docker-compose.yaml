@@ -1,5 +1,3 @@
-version: "3.7"
-
 services:
   nginx:
     restart: always
@@ -11,6 +9,40 @@ services:
     ports:
       - 80:80
       - 443:443
+
+  dashboard-agent:
+    build:
+      context: ../Taipei-City-Dashboard-Agent
+      dockerfile: Dockerfile
+    image: dashboard-agent:latest
+    container_name: dashboard-agent
+    restart: always
+    depends_on:
+      dashboard-agent-manifest:
+        condition: service_completed_successfully
+    environment:
+      BEDROCK_MODEL: ${BEDROCK_MODEL}
+      BEDROCK_REGION: ${BEDROCK_REGION:-us-west-2}
+      BEDROCK_API_KEY: ${BEDROCK_API_KEY}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      DB_DATA_DSN: ${DB_DATA_DSN}
+      DB_MANAGER_DSN: ${DB_MANAGER_DSN}
+      PYDANTIC_AI_NO_BANNER: "1"
+    ports:
+      - "8090:8090"
+
+  dashboard-agent-manifest:
+    build:
+      context: ../Taipei-City-Dashboard-Agent
+      dockerfile: Dockerfile
+    image: dashboard-agent:latest
+    container_name: dashboard-agent-manifest
+    restart: "no"
+    command: ["python", "scripts/build_manifest.py"]
+    environment:
+      DB_DATA_DSN: ${DB_DATA_DSN}
 
   dashboard-fe:
     image: node:${NODE_IMAGE_TAG:-latest}
@@ -27,6 +59,7 @@ services:
       VITE_TAIPEIPASS_URL: ${TAIPEIPASS_URL}
       VITE_TAIPEIPASS_CLIENT_ID: ${ISSO_CLIENT_ID}
       VITE_TAIPEIPASS_SCOPE: ${ISSO_CLIENT_SCOPE}
+      AGENT_HOST: dashboard-agent:8090
     volumes:
       - ../Taipei-City-Dashboard-FE:/opt/Taipei-City-Dashboard-FE
     ports:

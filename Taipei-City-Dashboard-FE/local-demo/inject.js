@@ -11,13 +11,53 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { generate, providerName } from "./ai/provider.js";
 import { buildPrompt } from "./ai/prompt.js";
-import { generateFromQuestion } from "./ai/generate.js";
+// generateFromQuestion import removed — /api/component/generate now proxies to the Python agent service
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const CACHE = path.join(DIR, "cache");
 const UPSTREAM = "https://citydashboard.taipei/api/v1";
 const DASH_INDEX = "youth-newtaipei";
 const OFFLINE = process.env.OFFLINE === "1";
+
+// ── Python agent service (AI analysis & component publishing) ──
+// In Docker Compose the service name is "dashboard-agent"; for local dev
+// override with AGENT_HOST=localhost:8090 (the default).
+const IS_DOCKER_COMPOSE = process.env.DOCKER_COMPOSE === "true";
+const AGENT_HOST = process.env.AGENT_HOST || (IS_DOCKER_COMPOSE ? "dashboard-agent:8090" : "localhost:8090");
+const AGENT_URL = `http://${AGENT_HOST}`;
+
+// ── Youth component dynamic serving ──
+const YOUTH_COLORS = ["#5a9cf8","#4FB3C4","#56B96D","#A8C95F","#F8CF58","#E8845C","#D95B6B","#9B59B6"];
+const youthComponents = new Map();   // component id → config object
+const youthDashboards = new Set();   // dashboard indexes with youth components
+
+function buildYouthConfig(id, assetId, title) {
+	return {
+		id, index: assetId, name: title,
+		chart_config: { index: assetId, color: YOUTH_COLORS, types: ["ColumnChart"], unit: "" },
+		history_config: null, map_config: [null], map_filter: null,
+		time_from: "static", time_to: null,
+		update_freq: 1, update_freq_unit: "year",
+		source: "新北市政府", short_desc: title, long_desc: "",
+		query_type: "three_d", city: "metrotaipei",
+	};
+}
+
+/** Thin proxy: forward a request to the Python agent and return the parsed JSON. */
+async function proxyToAgent(endpoint, method, body) {
+	const url = `${AGENT_URL}${endpoint}`;
+	const init = { method };
+	if (body) {
+		init.headers = { "content-type": "application/json" };
+		init.body = JSON.stringify(body);
+	}
+	const r = await fetch(url, init);
+	if (!r.ok) {
+		const text = await r.text().catch(() => "");
+		throw new Error(`Agent responded ${r.status}: ${text.slice(0, 300)}`);
+	}
+	return r.json();
+}
 
 const read = (f) => JSON.parse(fs.readFileSync(path.join(DIR, f), "utf-8"));
 
@@ -93,6 +133,12 @@ function createApiMiddleware() {
 				const url = req.url || "";
 				if (!url.startsWith("/api/")) return next();
 
+				// In Docker Compose mode, axios sends /api/dev/... — strip the /dev/ prefix
+				// so all route checks below work identically to local-demo mode.
+				const normUrl = IS_DOCKER_COMPOSE
+					? url.replace(/^\/api\/dev\//, "/api/")
+					: url;
+
 				const send = (obj, note) => {
 					res.setHeader("Content-Type", "application/json; charset=utf-8");
 					if (note) res.setHeader("X-Inject-Source", note);
@@ -100,73 +146,115 @@ function createApiMiddleware() {
 				};
 
 				try {
-					// ── 0a. 自動生成組件：chatbot 找不到現成組件時走這條 ──
-					//
-					// 模型只產出 ComponentSpec（挑表挑欄位），SQL 由程式編譯，
-					// 數值由 PostgreSQL 算。詳見 ai/component-spec.js 的說明。
-					if (url.startsWith("/api/component/generate") && req.method === "POST") {
+					// ── 0. Chatbot vector search → proxy to agent search ──
+					if (normUrl.startsWith("/api/vector/component") && req.method === "POST") {
+						const body = await readBody(req);
+						const query = (body.query || "").trim();
+						if (query) {
+							console.log("[vector→agent] " + query);
+							try {
+								const r = await proxyToAgent("/api/v1/agent/search", "POST", {
+									query,
+									limit: parseInt(body.limit) || 10,
+								});
+								if (r.data) {
+									for (const item of r.data) {
+										youthComponents.set(item.id, buildYouthConfig(item.id, item.index, item.name));
+									}
+								}
+								console.log("[vector→agent] cached", youthComponents.size, "youth components");
+								return send(r, "vector:agent");
+							} catch (err) {
+								console.error("[vector→agent] " + err.message);
+								if (IS_DOCKER_COMPOSE) return next();
+							}
+						} else if (IS_DOCKER_COMPOSE) {
+							return next();
+						}
+					}
+
+					// ── 0-stream. Agent SSE stream → proxy to agent /stream ──
+					if (normUrl.startsWith("/api/agent/stream") && req.method === "GET") {
+						const q = new URL(url, "http://x").searchParams;
+						const question = q.get("question") || "";
+						const maxInsights = parseInt(q.get("max_insights")) || 3;
+						console.log("[stream→agent] " + question + " (max_insights=" + maxInsights + ")");
+						const streamUrl = `${AGENT_URL}/api/v1/agent/stream?question=${encodeURIComponent(question)}&max_insights=${maxInsights}`;
+						try {
+							const upstream = await fetch(streamUrl);
+							res.writeHead(200, {
+								"Content-Type": "text/event-stream",
+								"Cache-Control": "no-cache",
+								"Connection": "keep-alive",
+								"X-Inject-Source": "stream:agent",
+							});
+							for await (const chunk of upstream.body) {
+								res.write(chunk);
+							}
+							res.end();
+							return;
+						} catch (err) {
+							console.error("[stream→agent] " + err.message);
+							res.writeHead(502, { "Content-Type": "text/event-stream" });
+							res.end(`data: ${JSON.stringify({type:"error",detail:err.message})}\n\n`);
+							return;
+						}
+					}
+
+					// ── 0a. 自動生成組件 → proxy to Python agent service ──
+					if (normUrl.startsWith("/api/component/generate") && req.method === "POST") {
 						const body = await readBody(req);
 						const question = (body.question || "").trim();
 						if (!question) {
 							res.statusCode = 400;
 							return send({ status: "error", message: "缺少 question" }, "generate");
 						}
-						console.log("[generate] " + question);
-						const r = await generateFromQuestion(question);
-						console.log("[generate] → " + (r.ok ? `${r.stats?.categories ?? "?"} 項` : `${r.stage}: ${r.errors?.[0]}`));
-						return send({ data: r, status: r.ok ? "success" : "error" }, "generate:" + (r.stage || "ok"));
+						console.log("[generate→agent] " + question);
+						try {
+							const r = await proxyToAgent("/api/v1/agent/analyze", "POST", { question });
+							return send({ data: r, status: "success" }, "generate:agent");
+						} catch (err) {
+							console.error("[generate→agent] " + err.message);
+							res.statusCode = 502;
+							return send({
+								status: "error",
+								message: "Agent 服務無回應: " + err.message,
+								hint: `確認 ${AGENT_URL} 是否在運行 (docker compose up dashboard-agent)`,
+							}, "generate:agent-error");
+						}
 					}
 
-					// ── 0b. Insight Pipeline：不等使用者問，主動找出值得注意的現象 ──
+					// ── 0b. Insight Pipeline → proxy to Python agent service ──
 					//
 					// 與 0a 的差別是「誰決定要看什麼」：
 					//   0a  使用者問一個問題 → 產一個組件回答它
 					//   0b  使用者只給方向   → 系統自己掃描、驗證、排序，回報前幾名
-					//
-					// 整條路徑上 LLM 一個數字都沒碰：統計由 ai/mining.js 決定性地算，
-					// 年齡是否可比較由 ai/age.js 判斷，關卡與評分由 ai/insight.js 執行。
-					// 模型目前完全沒有參與——之後若要加，也只能潤飾文字，不能改數值。
-					//
-					// 回傳 artifacts 與 markdown 兩份，但它們來自**同一批 InsightArtifact**，
-					// 所以對話框寫的數字和圖表畫的數字不可能不一致。
-					if (url.startsWith("/api/insight")) {
+					if (normUrl.startsWith("/api/insight")) {
 						const q = new URL(url, "http://x").searchParams;
+						const table = q.get("table") || "";
 						const topN = Math.min(20, Math.max(1, Number(q.get("top")) || 5));
 						const t0 = Date.now();
 						try {
-							const { runInsightPipeline } = await import("./ai/pipeline.js");
-							const r = await runInsightPipeline({
-								table: q.get("table") || undefined,
-								geography: q.get("geo") || "新北市",
-								target: q.get("age") || null,
-								topN,
+							const r = await proxyToAgent("/api/v1/agent/analyze", "POST", {
+								question: table ? `分析 ${table}` : "總覽分析",
+								domains: [],
+								max_insights: topN,
 							});
-							console.log(`[insight] ${r.funnel.candidates} 候選 → ${r.funnel.validated} 通過 → ${r.artifacts.length} 推薦 (${Date.now() - t0}ms)`);
-							return send({
-								data: {
-									funnel: r.funnel,
-									age_scope: { label: r.ageScope.label, classification: r.ageScope.classification },
-									artifacts: r.artifacts,
-									markdown: r.markdown,
-									errors: r.errors,
-								},
-								status: "success",
-							}, "insight:ok");
+							console.log(`[insight→agent] ${topN} insights requested (${Date.now() - t0}ms)`);
+							return send({ data: r, status: "success" }, "insight:agent");
 						} catch (err) {
-							// 資料庫沒開是最常見的原因，訊息要講得出下一步該做什麼，
-							// 不要只丟一個 stack trace 給現場的人猜。
-							console.log("[insight] 失敗: " + (err.message || err));
-							res.statusCode = 500;
+							console.error("[insight→agent] " + (err.message || err));
+							res.statusCode = 502;
 							return send({
 								status: "error",
-								message: String(err.message || err),
-								hint: "需要本機 PostgreSQL（dashboard 資料庫）。確認 `pg_isready` 有回應，且已套用 db/01_data_table.sql。",
-							}, "insight:error");
+								message: "Agent 服務無回應: " + String(err.message || err),
+								hint: `確認 ${AGENT_URL} 是否在運行 (docker compose up dashboard-agent)`,
+							}, "insight:agent-error");
 						}
 					}
 
 					// ── 0. AI 洞察：用官方現成的 ✦ 按鈕與彈窗，前端不用改 ──
-					if (url.startsWith("/api/component/ai-summary")) {
+					if (normUrl.startsWith("/api/component/ai-summary")) {
 						const q = new URL(url, "http://x").searchParams;
 						const idx = q.get("index");
 						if (idx === "youth_population_district") {
@@ -190,12 +278,70 @@ function createApiMiddleware() {
 					}
 
 					// ── 1. 我們自建的東西，永遠讀本地檔 ──
-					if (url.startsWith("/api/component/9001/chart")) {
+					if (normUrl.startsWith("/api/component/9001/chart")) {
 						return send(read("chart_9001.json"), "local");
 					}
-					if (url.startsWith(`/api/dashboard/${DASH_INDEX}`)) {
+					if (normUrl.startsWith(`/api/dashboard/${DASH_INDEX}`)) {
 						return send({ data: [read("component_9001.json")], status: "success" }, "local");
 					}
+
+					// ── 1b. Track youth dashboard creation ──
+					if (req.method === "POST" && normUrl.startsWith("/api/dashboard")) {
+						console.log("[dashboard:debug] POST", normUrl, "docker:", IS_DOCKER_COMPOSE);
+					}
+					if (normUrl === "/api/dashboard/" && req.method === "POST" && IS_DOCKER_COMPOSE) {
+						const body = await readBody(req);
+						const ids = (body.components || []).map(c => typeof c === "object" ? c.id : c);
+						const hasYouth = ids.some(id => id >= 90000);
+						const beUrl = "http://dashboard-be:8080/api/v1/dashboard/";
+						const fwdH = { "content-type": "application/json" };
+						for (const h of ["authorization", "cookie"]) if (req.headers[h]) fwdH[h] = req.headers[h];
+						const r = await fetch(beUrl, { method: "POST", headers: fwdH, body: JSON.stringify(body) });
+						const data = await r.json();
+						if (hasYouth && data.data?.index) youthDashboards.add(data.data.index);
+						console.log("[dashboard:create]", data.data?.index, "ids:", ids.length);
+						return send(data, hasYouth ? "dashboard:create-youth" : "dashboard:create");
+					}
+
+					// ── 1c. Serve youth dashboard components ──
+					const dashMatch = normUrl.match(/^\/api\/dashboard\/([\w-]+)/);
+					if (dashMatch && req.method === "GET" && youthDashboards.has(dashMatch[1])) {
+						let beComps = [];
+						if (IS_DOCKER_COMPOSE) {
+							try {
+								const beUrl = `http://dashboard-be:8080/api/v1/dashboard/${dashMatch[1]}`;
+								const fwdH = {};
+								for (const h of ["authorization", "cookie"]) if (req.headers[h]) fwdH[h] = req.headers[h];
+								const r = await fetch(beUrl, { headers: fwdH });
+								const d = await r.json();
+								beComps = d.data || [];
+							} catch {}
+						}
+						const beIds = new Set(beComps.map(c => c.id));
+						const youthConfigs = Array.from(youthComponents.values()).filter(c => !beIds.has(c.id));
+						console.log("[dashboard:youth]", dashMatch[1], "be:", beComps.length, "youth:", youthConfigs.length);
+						return send({ data: [...beComps, ...youthConfigs], status: "success" }, "dashboard:youth");
+					}
+
+					// ── 1d. Serve youth component chart data ──
+					const chartMatch = normUrl.match(/^\/api\/component\/(\d+)\/chart/);
+					if (chartMatch && req.method === "GET") {
+						const cid = parseInt(chartMatch[1]);
+						if (youthComponents.has(cid)) {
+							const comp = youthComponents.get(cid);
+							console.log("[chart:youth]", cid, comp.index);
+							try {
+								const r = await proxyToAgent(`/api/v1/agent/component/${comp.index}/chart`, "GET");
+								return send(r, "chart:youth");
+							} catch (err) {
+								console.error("[chart:youth] " + err.message);
+								return send({ data: [], status: "success" }, "chart:youth-empty");
+							}
+						}
+					}
+
+					// ── Docker Compose mode: pass non-intercepted routes to Vite proxy → Go BE ──
+					if (IS_DOCKER_COMPOSE) return next();
 
 					// ── 2. 官方 API：先讀快取（只對 GET，POST 帶 body 不能用網址當 key）──
 					const hit = req.method === "GET" ? readCache(url) : null;
@@ -226,6 +372,7 @@ function createApiMiddleware() {
 					if (req.method === "GET") writeCache(url, data);
 					return send(url === "/api/dashboard/" || url === "/api/dashboard" ? addMine(data) : data, "network");
 				} catch (err) {
+					if (IS_DOCKER_COMPOSE) return next();
 					// 連網失敗，最後再試一次快取
 					const fallback = readCache(url);
 					if (fallback) return send(fallback, "cache-fallback");
