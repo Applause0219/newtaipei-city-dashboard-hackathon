@@ -238,5 +238,31 @@ export async function runAgent(question, { onEvent = () => {}, db, history = [] 
 	const text = (last?.content || [])
 		.filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
 
+	// 模型層失敗時 runAgentLoop 不會拋例外，它回一則 stopReason="error" 的訊息。
+	// 不檢查的話整包會長得像成功：0 次工具、0 個組件、0.8 秒、text 是空字串，
+	// 使用者只看到「（沒有回應內容）」，完全看不出是憑證過期還是被限流。
+	//
+	// 2026-09-13 就是這樣：臨時憑證過期，回 403 security token expired，
+	// 但畫面上跟「模型想不出話講」長得一模一樣。
+	if (last?.stopReason === "error" || last?.stopReason === "aborted") {
+		const raw = String(last.errorMessage || "模型沒有回應");
+		const err = new Error(
+			/expired|ExpiredToken|security token/i.test(raw)
+				? "AWS 臨時憑證已過期，請重新設定 secrets.env 後重啟服務"
+				: /throttl|429|TooManyRequests/i.test(raw)
+					? "Bedrock 被限流，稍等幾秒再試"
+					: /AccessDenied|not authorized|403/i.test(raw)
+						? "這組憑證沒有這個模型的權限：" + raw.slice(0, 160)
+						: raw.slice(0, 240),
+		);
+		err.stage = "model";
+		throw err;
+	}
+	if (!text && !components.length) {
+		const err = new Error("模型沒有產生任何內容，也沒有呼叫任何工具");
+		err.stage = "model";
+		throw err;
+	}
+
 	return { text, trace, components, ms: Date.now() - t0, model: `bedrock/${MODEL_ID}` };
 }
