@@ -88,7 +88,8 @@ app.add_middleware(
 # Helpers
 # ---------------------------------------------------------------------------
 
-_AGENT_RUN_TIMEOUT = 300  # seconds -- generous for multi-step analysis
+_AGENT_TIMEOUT_BASE = 180
+_AGENT_TIMEOUT_PER_INSIGHT = 60
 
 def _build_prompt(question: str, domains: list[str], max_insights: int) -> str:
     """Augment the raw user question with structured hints for the agent."""
@@ -139,15 +140,16 @@ def _format_sse_event(event: Any) -> dict[str, Any] | None:
             "append": True,
         }
     if isinstance(event, FunctionToolCallEvent):
-        return {
-            "type": "tool_call",
-            "tool": event.part.tool_name,
-            "args": event.part.args_as_dict(),
-        }
+        tool_name = event.part.tool_name
+        args = event.part.args_as_dict()
+        if tool_name == "emit_insight":
+            return {"type": "insight", "data": args}
+        return {"type": "tool_call", "tool": tool_name, "args": args}
     if isinstance(event, FunctionToolResultEvent):
         content = event.part.content
-        # Truncate large tool results so the SSE payload stays manageable.
         content_str = str(content)[:2000] if content else ""
+        if content_str.startswith("Insight emitted:"):
+            return None
         return {
             "type": "tool_result",
             "tool_call_id": event.tool_call_id,
@@ -329,16 +331,17 @@ async def component_chart(asset_id: str):
 async def analyze(req: AnalyzeRequest):
     """Run the agent to completion and return the structured result."""
     prompt = _build_prompt(req.question, req.domains, req.max_insights)
-    published: list[str] = []
+    timeout = _AGENT_TIMEOUT_BASE + _AGENT_TIMEOUT_PER_INSIGHT * req.max_insights
+    deps: dict = {"published": [], "insights": []}
     try:
         result = await asyncio.wait_for(
-            agent.run(prompt, deps=published, usage_limits=_USAGE_LIMITS),
-            timeout=_AGENT_RUN_TIMEOUT,
+            agent.run(prompt, deps=deps, usage_limits=_USAGE_LIMITS),
+            timeout=timeout,
         )
     except asyncio.TimeoutError:
         raise HTTPException(
             status_code=504,
-            detail=f"Agent did not finish within {_AGENT_RUN_TIMEOUT}s",
+            detail=f"Agent did not finish within {timeout}s",
         )
     except UsageLimitExceeded as exc:
         raise HTTPException(
@@ -346,10 +349,11 @@ async def analyze(req: AnalyzeRequest):
             detail="Agent 分析步驟過多，已中止。請嘗試更具體的問題。",
         ) from exc
     output: AnalysisResult = result.output
-    # Ensure the original question is always populated.
     if not output.question:
         output.question = req.question
-    output.published = list(dict.fromkeys(published))
+    output.published = list(dict.fromkeys(deps["published"]))
+    if not output.insights and deps["insights"]:
+        output.insights = deps["insights"]
     return output
 
 
@@ -385,22 +389,26 @@ async def stream(
                     await queue.put(formatted)
 
         # -- background task that drives the agent run -------------------
+        timeout = _AGENT_TIMEOUT_BASE + _AGENT_TIMEOUT_PER_INSIGHT * max_insights
+
         async def _run_agent():
-            published: list[str] = []
+            deps: dict = {"published": [], "insights": []}
             try:
                 result = await asyncio.wait_for(
                     agent.run(
                         prompt,
-                        deps=published,
+                        deps=deps,
                         usage_limits=_USAGE_LIMITS,
                         event_stream_handler=_event_handler,
                     ),
-                    timeout=_AGENT_RUN_TIMEOUT,
+                    timeout=timeout,
                 )
                 output = result.output
                 if not output.question:
                     output.question = question
-                output.published = list(dict.fromkeys(published))
+                output.published = list(dict.fromkeys(deps["published"]))
+                if not output.insights and deps["insights"]:
+                    output.insights = deps["insights"]
                 await queue.put({
                     "type": "result",
                     "data": output.model_dump(mode="json"),
@@ -408,7 +416,7 @@ async def stream(
             except asyncio.TimeoutError:
                 await queue.put({
                     "type": "error",
-                    "detail": f"Agent timed out after {_AGENT_RUN_TIMEOUT}s",
+                    "detail": f"Agent timed out after {timeout}s",
                 })
             except UsageLimitExceeded:
                 await queue.put({

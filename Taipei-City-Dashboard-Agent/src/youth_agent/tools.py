@@ -21,6 +21,7 @@ from .db import execute_readonly
 from .guardrails import run_guardrails
 from .schemas import (
     QUERY_TYPE_COLUMNS,
+    AnalysisInsight,
     ComponentSpec,
     GuardrailViolation,
     PublishResult,
@@ -33,8 +34,32 @@ logger = logging.getLogger(__name__)
 # silently renders an empty card -- one of the trickiest failure modes.
 _KNOWN_CITIES: frozenset[str] = frozenset({"metrotaipei"})
 _CHART_TYPES_BY_QUERY = {
-    "two_d": frozenset({"BarChart", "ColumnChart", "DistrictChart", "DonutChart"}),
-    "three_d": frozenset({"ColumnChart", "DistrictChart", "BarPercentChart"}),
+    "two_d": frozenset(
+        {
+            "BarChart",
+            "ColumnChart",
+            "DistrictChart",
+            "DonutChart",
+            "TreemapChart",
+            "RadarChart",
+            "PolarAreaChart",
+            "NegativeColumnChart",
+        }
+    ),
+    "three_d": frozenset(
+        {
+            "ColumnChart",
+            "DistrictChart",
+            "BarPercentChart",
+            "RadarChart",
+            "HeatmapChart",
+            "IndicatorChart",
+            "PolarAreaChart",
+            "TextUnitChart",
+            "NegativeColumnChart",
+            "QuartileChart",
+        }
+    ),
     "time": frozenset(
         {"TimelineSeparateChart", "TimelineStackedChart", "ColumnLineChart"}
     ),
@@ -193,9 +218,10 @@ async def publish_component(
         chart_types = [_DEFAULT_CHART_TYPE[spec.query_type]]
     time_from = spec.time_from if spec.time_from in _FRONTEND_TIME_FROM else "max"
 
-    # --- 4. column-order contract ----------------------------------------
+    # --- 4. column-order contract + data quality --------------------------
     expected_cols = QUERY_TYPE_COLUMNS[spec.query_type]
     query_chart = sql_guard.repair_common_sql(spec.query_chart)
+    _MIN_ROWS = {"two_d": 2, "three_d": 2, "time": 4}
     try:
         ok, reason = sql_guard.validate_sql(spec.query_chart)
         if not ok:
@@ -210,35 +236,99 @@ async def publish_component(
                 ],
             )
 
-        # Run the chart SQL with LIMIT 1 to inspect column names/order.
         test_sql = sql_guard.add_safeguards(
-            spec.query_chart, row_limit=1, wrap_timeout=False
+            spec.query_chart, row_limit=200, wrap_timeout=False
         )
         records = await execute_readonly(test_sql, timeout=config.SQL_TIMEOUT)
 
-        if records:
-            actual_cols = list(records[0].keys())
-            if actual_cols != expected_cols:
+        if not records:
+            return PublishResult(
+                success=False,
+                index=spec.index,
+                violations=[
+                    GuardrailViolation(
+                        check_name="empty_result",
+                        reason=(
+                            "query_chart returned 0 rows — chart will be "
+                            "blank. Fix the SQL WHERE clause or check the "
+                            "table has data."
+                        ),
+                    )
+                ],
+            )
+
+        actual_cols = list(records[0].keys())
+        if actual_cols != expected_cols:
+            return PublishResult(
+                success=False,
+                index=spec.index,
+                violations=[
+                    GuardrailViolation(
+                        check_name="column_order",
+                        reason=(
+                            f"query_chart columns {actual_cols} do not "
+                            f"match expected {expected_cols} for "
+                            f"query_type={spec.query_type!r}"
+                        ),
+                    )
+                ],
+            )
+
+        min_rows = _MIN_ROWS.get(spec.query_type, 2)
+        if len(records) < min_rows:
+            return PublishResult(
+                success=False,
+                index=spec.index,
+                violations=[
+                    GuardrailViolation(
+                        check_name="too_few_rows",
+                        reason=(
+                            f"query_chart returned {len(records)} rows, "
+                            f"need at least {min_rows} for "
+                            f"query_type={spec.query_type!r}. "
+                            f"Broaden the filter or pick a different dataset."
+                        ),
+                    )
+                ],
+            )
+
+        x_vals = [r["x_axis"] for r in records]
+        if spec.query_type == "two_d":
+            dupes = [v for v in set(x_vals) if x_vals.count(v) > 1]
+            if dupes:
                 return PublishResult(
                     success=False,
                     index=spec.index,
                     violations=[
                         GuardrailViolation(
-                            check_name="column_order",
+                            check_name="duplicate_x_axis",
                             reason=(
-                                f"query_chart columns {actual_cols} do not "
-                                f"match expected {expected_cols} for "
-                                f"query_type={spec.query_type!r}"
+                                f"two_d chart has duplicate x_axis values "
+                                f"{dupes[:5]} — add GROUP BY or fix the query."
                             ),
                         )
                     ],
                 )
-        else:
-            logger.warning(
-                "query_chart for %s returned no rows; "
-                "column order could not be verified",
-                spec.index,
-            )
+        elif spec.query_type == "time":
+            y_vals = [r["y_axis"] for r in records]
+            pairs = list(zip(x_vals, y_vals))
+            dupe_pairs = [p for p in set(pairs) if pairs.count(p) > 1]
+            if dupe_pairs:
+                return PublishResult(
+                    success=False,
+                    index=spec.index,
+                    violations=[
+                        GuardrailViolation(
+                            check_name="duplicate_x_axis",
+                            reason=(
+                                f"time chart has duplicate (x_axis, y_axis) "
+                                f"pairs — add GROUP BY or DISTINCT. "
+                                f"Examples: {dupe_pairs[:3]}"
+                            ),
+                        )
+                    ],
+                )
+
     except Exception as exc:
         return PublishResult(
             success=False,
@@ -358,7 +448,79 @@ async def publish_component(
             ],
         )
 
+    # --- 6. post-publish verification -------------------------------------
+    try:
+        pool = db.manager_pool
+        async with pool.acquire() as conn:
+            missing = []
+            for tbl in ("components", "component_charts"):
+                exists = await conn.fetchval(
+                    f"SELECT EXISTS (SELECT 1 FROM {tbl} WHERE index = $1)",
+                    spec.index,
+                )
+                if not exists:
+                    missing.append(tbl)
+            qc_exists = await conn.fetchval(
+                "SELECT EXISTS (SELECT 1 FROM query_charts "
+                "WHERE index = $1 AND city = $2)",
+                spec.index,
+                spec.city,
+            )
+            if not qc_exists:
+                missing.append("query_charts")
+            if missing:
+                logger.error(
+                    "Post-publish check failed for %s: missing in %s",
+                    spec.index,
+                    missing,
+                )
+                return PublishResult(
+                    success=False,
+                    index=spec.index,
+                    violations=[
+                        GuardrailViolation(
+                            check_name="post_publish_verify",
+                            reason=(
+                                f"Published but rows missing in {missing}. "
+                                f"Dashboard will crash — retrying."
+                            ),
+                        )
+                    ],
+                )
+    except Exception as exc:
+        logger.warning("Post-publish verify failed: %s", exc)
+
     logger.info("Published component %s successfully", spec.index)
-    if isinstance(ctx.deps, list):
+    if isinstance(ctx.deps, dict) and "published" in ctx.deps:
+        ctx.deps["published"].append(spec.index)
+    elif isinstance(ctx.deps, list):
         ctx.deps.append(spec.index)
     return PublishResult(success=True, index=spec.index)
+
+
+# ---------------------------------------------------------------------------
+# Tool 3: emit_insight
+# ---------------------------------------------------------------------------
+
+
+async def emit_insight(
+    ctx: RunContext[Any],
+    title: str,
+    claim: str,
+    narrative: str = "",
+    source_sql: str = "",
+) -> str:
+    """Emit a single insight to the user immediately via SSE stream.
+
+    Call this as soon as you have a complete insight -- do NOT wait until
+    the end.  The frontend renders each insight card the moment it arrives.
+    """
+    insight = AnalysisInsight(
+        title=title,
+        claim=claim,
+        narrative=narrative,
+        source_sql=source_sql,
+    )
+    if isinstance(ctx.deps, dict) and "insights" in ctx.deps:
+        ctx.deps["insights"].append(insight.model_dump())
+    return f"Insight emitted: {title}"

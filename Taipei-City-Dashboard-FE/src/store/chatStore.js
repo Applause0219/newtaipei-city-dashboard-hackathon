@@ -235,13 +235,38 @@ export const useChatStore = defineStore('chat', () => {
 					agentMsg.content = `🤖 Agent 呼叫工具：${_toolLabel(ev.tool)}`;
 				} else if (ev.type === 'tool_result') {
 					const s = typeof ev.content === 'string' ? ev.content : '';
-					const rowMatch = s.match(/row_count=(\d+)/);
-					const hint = rowMatch ? `${rowMatch[1]} 筆` : '完成';
+					const isFailure = /violations|SQL blocked|Query execution failed|success=False/i.test(s)
+						|| s.startsWith('Insight emitted:');
+					if (isFailure) {
+						agentMsg.thinkingSteps.push({
+							type: 'retry',
+							label: '自動重試',
+							hidden: true,
+						});
+						for (let i = agentMsg.thinkingSteps.length - 2; i >= 0; i--) {
+							if (agentMsg.thinkingSteps[i].type === 'call') {
+								agentMsg.thinkingSteps[i].hidden = true;
+								break;
+							}
+						}
+					} else {
+						const rowMatch = s.match(/row_count=(\d+)/);
+						const hint = rowMatch ? `${rowMatch[1]} 筆` : '完成';
+						agentMsg.thinkingSteps.push({
+							type: 'result',
+							label: `取得結果（${hint}）`,
+						});
+						agentMsg.content = `🤖 Agent 取得結果，繼續分析...`;
+					}
+				} else if (ev.type === 'insight') {
+					const ins = ev.data || {};
+					if (!agentMsg.insightDetails) agentMsg.insightDetails = [];
+					agentMsg.insightDetails.push(ins);
 					agentMsg.thinkingSteps.push({
-						type: 'result',
-						label: `取得結果（${hint}）`,
+						type: 'status',
+						label: `💡 洞察：${ins.title || ''}`,
 					});
-					agentMsg.content = `🤖 Agent 取得結果，繼續分析...`;
+					agentMsg.content = `🤖 Agent 已發現 ${agentMsg.insightDetails.length} 項洞察，繼續分析...`;
 				} else if (ev.type === 'status') {
 					agentMsg.thinkingSteps.push({ type: 'status', label: ev.message });
 					agentMsg.content = `🤖 ${ev.message}`;
@@ -249,11 +274,17 @@ export const useChatStore = defineStore('chat', () => {
 					const data = ev.data || {};
 					const insights = data.insights || [];
 					const published = data.published || [];
-					if (insights.length > 0) {
+					const streamedCount = (agentMsg.insightDetails || []).length;
+					if (streamedCount > 0) {
+						agentMsg.content = `📊 Agent 分析完成！共 ${streamedCount} 項洞察：`;
+					} else if (insights.length > 0) {
 						agentMsg.content = `📊 Agent 分析完成！發現 ${insights.length} 項洞察：`;
 						agentMsg.insightDetails = insights;
 					} else {
-						agentMsg.content = `📊 Agent 分析完成。\n${data.report_markdown || ''}`.trim();
+						agentMsg.content = `📊 Agent 分析完成。`;
+					}
+					if (data.report_markdown) {
+						agentMsg.reportMarkdown = data.report_markdown;
 					}
 					if (published.length > 0) {
 						const responses = await Promise.all(published.map((index) =>
