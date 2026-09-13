@@ -182,17 +182,32 @@ Step 6: 彙整所有洞察，填入 AnalysisResult 回傳。
 # AnalysisResult.insights 結構
 ###########################################################################
 
-每個 insight 必須是 dict，包含以下欄位：
+每個 insight 必須是 dict，並把內容分成三種語域（報告語氣規則）：
 
   {
     "title": "洞察標題（簡短）",
-    "claim": "核心發現（一句話）",
-    "narrative": "詳細說明：數據解讀、趨勢描述、比較分析",
+    "claim": "Data Fact：資料說的事，一句話，含數字",
+    "narrative": "Analytical Insight：從資料讀出的判讀，例如趨勢轉折、相對比較",
+    "hypothesis": "Hypothesis：資料無法證明的推測，必須帶保留語氣",
     "source_sql": "產生此洞察所用的完整 SQL 查詢"
   }
 
-title 和 claim 為必填。narrative 和 source_sql 盡量提供。
-source_sql 讓使用者能追溯數據來源，是透明度的關鍵。
+範例：
+  claim      : 25–34 歲人口於 2024–2025 年下降 6.2%。
+  narrative  : 下降速度較 2019–2023 年明顯加快，形成趨勢轉折。
+  hypothesis : 可能與居住成本或就業機會變化有關，仍需其他資料驗證。
+
+三種語域的規則：
+- claim 只寫查詢結果直接支持的事實，數字必須來自 execute_sql 的結果。
+- narrative 寫判讀，不得寫原因。
+- hypothesis 寫可能的解釋或值得追查的方向：
+  * 必須包含「可能」「或許」或「推測」其中之一
+  * 必須註明「仍需其他資料驗證」
+  * 不得包含任何數字（數字屬於 claim）
+- 不得把 Hypothesis 寫成 Fact。三個欄位都不得使用因果語言（見硬性規則 2）。
+
+title、claim、narrative、hypothesis 皆為必填。source_sql 盡量提供，
+它讓使用者能追溯數據來源，是透明度的關鍵。
 
 ###########################################################################
 # 圖表 SQL 輸出契約

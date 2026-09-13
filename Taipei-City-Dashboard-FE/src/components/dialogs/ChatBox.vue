@@ -222,18 +222,33 @@ const emit = defineEmits(["close"]);
                 <div class="insight-title">
                   {{ idx + 1 }}. {{ ins.title || '(洞察)' }}
                 </div>
-                <p
+                <div
                   v-if="ins.claim"
-                  class="insight-claim"
+                  class="insight-register"
                 >
-                  {{ ins.claim }}
-                </p>
-                <p
+                  <span class="register-label">Data Fact</span>
+                  <p class="insight-claim">
+                    {{ ins.claim }}
+                  </p>
+                </div>
+                <div
                   v-if="ins.narrative"
-                  class="insight-narrative"
+                  class="insight-register"
                 >
-                  {{ ins.narrative }}
-                </p>
+                  <span class="register-label">Analytical Insight</span>
+                  <p class="insight-narrative">
+                    {{ ins.narrative }}
+                  </p>
+                </div>
+                <div
+                  v-if="ins.hypothesis"
+                  class="insight-register is-hypothesis"
+                >
+                  <span class="register-label">Hypothesis・未經驗證</span>
+                  <p class="insight-hypothesis">
+                    {{ ins.hypothesis }}
+                  </p>
+                </div>
                 <details
                   v-if="ins.source_sql"
                   class="insight-sql"
@@ -687,6 +702,32 @@ $radius-20: 20px;
 							.insight-narrative {
 								color: #bbb;
 								font-size: 13px;
+								margin: 4px 0;
+								line-height: 1.4;
+							}
+
+							.insight-register {
+								margin-top: 6px;
+
+								.register-label {
+									display: block;
+									font-size: 11px;
+									letter-spacing: 0.04em;
+									color: #888;
+								}
+
+								&.is-hypothesis {
+									border-left: 2px dashed #d9a441;
+									padding-left: 8px;
+
+									.register-label { color: #d9a441; }
+								}
+							}
+
+							.insight-hypothesis {
+								color: #d8c9a8;
+								font-size: 13px;
+								font-style: italic;
 								margin: 4px 0;
 								line-height: 1.4;
 							}

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import re
 import zlib
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 POLICY_YOUTH = {"lower": 18, "upper": 35}
@@ -109,11 +110,44 @@ class PublishResult(BaseModel):
     violations: list[GuardrailViolation] = Field(default_factory=list)
 
 
+HYPOTHESIS_HEDGES: list[str] = ["可能", "或許", "推測"]
+
+
 class AnalysisInsight(BaseModel):
+    """One insight, split into three registers that must stay distinguishable.
+
+    claim      -> Data Fact           what the data says
+    narrative  -> Analytical Insight  what we read from the data
+    hypothesis -> Hypothesis          not proven by this data
+
+    The split is enforced here, not left to wording: a hypothesis without a
+    hedge, or with numbers, would read as a fact on the card.
+    """
+
     title: str = Field(min_length=1)
     claim: str = Field(min_length=1)
     narrative: str = Field(min_length=1)
+    hypothesis: str = Field(min_length=1)
     source_sql: str = ""
+
+    @field_validator("claim", "narrative", "hypothesis")
+    @classmethod
+    def _no_causal_language(cls, v: str) -> str:
+        found = [m for m in CAUSAL_MARKERS if m in v]
+        if found:
+            raise ValueError(f"不得使用因果語言：{'、'.join(found)}")
+        return v
+
+    @field_validator("hypothesis")
+    @classmethod
+    def _hypothesis_is_hedged(cls, v: str) -> str:
+        if not any(h in v for h in HYPOTHESIS_HEDGES):
+            raise ValueError("hypothesis 必須帶保留語氣（可能／或許／推測）")
+        if "驗證" not in v:
+            raise ValueError("hypothesis 必須註明仍需驗證，例如「仍需其他資料驗證」")
+        if re.search(r"\d", v):
+            raise ValueError("hypothesis 不得包含數字：數字屬於 Data Fact（claim）")
+        return v
 
 
 class AnalysisResult(BaseModel):
