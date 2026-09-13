@@ -96,6 +96,9 @@ onBeforeUnmount(() => {
 const allX = props.series.flatMap((s) => s.data.map((d) => d.x));
 const allY = props.series.flatMap((s) => s.data.map((d) => d.y));
 
+/** x 軸的原始資料是不是整數——決定刻度要不要顯示小數 */
+const xIsInteger = allX.every((v) => Number.isInteger(Number(v)));
+
 const firstX = allX[0];
 const isDatetime =
 	(typeof firstX === "string" && /^\d{4}-\d{2}-\d{2}/.test(firstX)) ||
@@ -178,7 +181,12 @@ const chartOptions = ref({
 			offsetY: 2,
 			formatter: isDatetime
 				? undefined
-				: (val) => Number(val).toLocaleString(),
+				// 刻度是 ApexCharts 把 [min, max] 均分出來的，不會落在整數上。
+				// 資料本身都是整數時（人數、件數）不要顯示小數——
+				// 「24,359.64 人」讀起來像精確到小數點後兩位的統計，其實只是刻度。
+				: (val) => Number(val).toLocaleString(undefined, {
+					maximumFractionDigits: xIsInteger ? 0 : 2,
+				}),
 		},
 	},
 
@@ -286,8 +294,10 @@ function handleDataSelection(_e, _chartContext, config) {
           {{ tooltip.categories[1] ?? "Y" }}：{{ tooltip.point.y }}
           {{ parsedUnit?.y ?? "" }}
         </div>
-        <div>
-          {{ tooltip.categories[2] ?? "Z" }}：{{ tooltip.point.z }}
+        <!-- 第三維度是選填的。沒有時（categories[2] 是空字串）整列藏起來，
+             否則泡泡大小固定的散布圖會一直顯示「：12」這種沒有意義的數字。 -->
+        <div v-if="tooltip.categories[2]">
+          {{ tooltip.categories[2] }}：{{ tooltip.point.z }}
           {{ parsedUnit?.z ?? "" }}
         </div>
       </div>
