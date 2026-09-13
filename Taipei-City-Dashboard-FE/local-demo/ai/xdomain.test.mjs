@@ -199,6 +199,84 @@ const amb2 = await call("compare_indicators", {
 ok("跨資料集的指標在 compare 也要擋", !!amb2.error, JSON.stringify(amb2).slice(0, 180));
 
 // ────────────────────────────────────────────────────────────
+group("F. 散布圖：相關係數要看得見");
+
+// 取樣一致性是這組的重點。correlate 與 plot 共用同一組 resolveSelector
+// 產出的 where，所以畫出來的點必須**就是**算 r 的那批資料——
+// 不是另外查一次可能不同的東西。
+const raw = await T.plot_correlation.execute("t", {
+	a: POP, b: RENT, label_a: "青年人口（15-35歲）", label_b: "租金中位數", name: "人口 vs 租金",
+});
+const plot = JSON.parse(raw.content[0].text);
+const comp = raw.details.component;
+
+ok("配對數與 correlate_indicators 完全一致",
+	plot.plotted === c1.n_districts, `plot=${plot.plotted} correlate=${c1.n_districts}`);
+
+// 從點自己算一次 Pearson。對不上就代表兩邊查到的不是同一批資料。
+const pts = comp.chart.data.map((s) => s.data[0]);
+const n = pts.length;
+const mx = pts.reduce((a, p) => a + p.x, 0) / n;
+const my = pts.reduce((a, p) => a + p.y, 0) / n;
+let sxy = 0, sxx = 0, syy = 0;
+for (const p of pts) { sxy += (p.x - mx) * (p.y - my); sxx += (p.x - mx) ** 2; syy += (p.y - my) ** 2; }
+const rFromPoints = sxy / Math.sqrt(sxx * syy);
+ok("從散布圖的點重算 Pearson，要等於 correlate 回報的 r",
+	Math.abs(rFromPoints - c1.pearson) < 0.002,
+	`點算出 ${rFromPoints.toFixed(3)}，correlate 回報 ${c1.pearson}`);
+
+// 一個行政區一個 series 是 BubbleChart 的硬性契約：tooltip 標題讀 series 名稱
+// （BubbleChart.vue:158、278）。做成一個 series 裝 23 個點的話，
+// 每個泡泡 hover 起來標題都一樣，行政區的身分整個消失。
+ok("一個行政區一個 series", comp.chart.data.length === plot.plotted, String(comp.chart.data.length));
+ok("每個 series 只有一個點", comp.chart.data.every((s) => s.data.length === 1));
+ok("series 名稱是行政區名", comp.chart.data.every((s) => /區$/.test(s.name)),
+	comp.chart.data.slice(0, 3).map((s) => s.name).join("、"));
+
+// 補零在長條圖只是少一根，在散布圖是造出一個 (x, 0) 的假離群點，
+// 既壓扁 y 軸又製造不存在的相關性。必須 INNER JOIN。
+ok("沒有補零的假點", comp.chart.data.every((s) => s.data[0].x > 0 && s.data[0].y > 0));
+ok("SQL 用 INNER JOIN，不是 LEFT JOIN + coalesce",
+	comp.sql.includes("JOIN") && !comp.sql.includes("LEFT JOIN") && !comp.sql.includes("coalesce"));
+
+// 前端契約：categories 是陣列（元件用 [0]/[1]/[2] 取），unit 要能 JSON.parse
+ok("categories 是三元素陣列",
+	Array.isArray(comp.chart.categories) && comp.chart.categories.length === 3,
+	JSON.stringify(comp.chart.categories));
+ok("x / y 的軸名用模型給的中文標籤",
+	comp.chart.categories[0] === "青年人口（15-35歲）" && comp.chart.categories[1] === "租金中位數");
+ok("第三個軸名留空，元件會把 z 那列藏起來", comp.chart.categories[2] === "");
+ok("unit 是可 JSON.parse 的字串，且 x / y 都有單位", (() => {
+	try { const u = JSON.parse(comp.spec.chart.unit); return u.x === "人" && u.y === "元/月"; }
+	catch { return false; }
+})(), comp.spec.chart.unit);
+ok("chart.types 是 BubbleChart", comp.spec.chart.types[0] === "BubbleChart");
+ok("query_type 是 bubble", comp.spec.query_type === "bubble");
+ok("spec 帶得出名稱與說明",
+	comp.spec.name === "人口 vs 租金" && comp.spec.long_desc.includes("沒有補零"));
+
+// z 是固定值：ApexCharts 在 zRange=0 時 n 退回 1，半徑就等於 z 本身
+ok("z 是固定的 12（等於像素半徑）", comp.chart.data.every((s) => s.data[0].z === 12));
+
+// 守門：沿用 resolveSelector，所以 correlate 擋得住的 plot 也要擋得住
+const noDist = await call("plot_correlation", {
+	a: POP, b: { indicator_id: "commute_work_location_count" },
+});
+ok("指標沒有 district 層級要擋下", !!noDist.error, JSON.stringify(noDist).slice(0, 140));
+const noDistRaw = await T.plot_correlation.execute("t", {
+	a: POP, b: { indicator_id: "commute_work_location_count" },
+});
+ok("被擋下時不可以回傳 component（否則前端會掛上空圖）",
+	!noDistRaw.details.component);
+
+// 租金沒有年齡組距（age_lower 是 NULL），硬篩年齡會得到零列
+const thin = await call("plot_correlation", {
+	a: POP, b: { indicator_id: "rental_contract_rent_median", age_lower: 15 },
+});
+ok("配對數少於 5 個區時拒畫，並說清楚原因", !!thin.error && /少於 5/.test(thin.error), thin.error);
+ok("拒畫時要給替代方案", /compare_indicators/.test(thin.hint || ""), thin.hint);
+
+// ────────────────────────────────────────────────────────────
 console.log(out.join("\n"));
 console.log(`\nxdomain.test.mjs: ${pass}/${pass + fail} 通過`);
 if (fail) process.exitCode = 1;

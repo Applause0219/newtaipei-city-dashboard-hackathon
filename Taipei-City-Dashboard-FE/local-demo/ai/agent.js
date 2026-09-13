@@ -49,6 +49,9 @@ export function systemPrompt(catalog) {
 		"   - 「過去N年變化」「流失最多」「成長最快」「哪幾區在減少」→ 用 compare_periods，",
 		"     它會算好每個區的變化量與變化率並排序。**不可以自己相減、自己排名**。",
 		"   - 「強／弱／明顯」這種形容詞，用工具回傳的 strength 欄位，不要自己定義。",
+		"   - **算完 correlate_indicators 一定要再呼叫 plot_correlation**，把散布圖畫出來。",
+		"     一個泡泡一個行政區，離群的區使用者自己看得到；兩排長條圖看不出配對關係。",
+		"     取樣條件兩邊完全相同，所以點的位置就是算 r 用的那批數字。",
 		"   你的工作是決定「算什麼」，不是「算多少」。",
 		"3. **比較一定要兩邊都查**。「過度代表」「高於平均」這類說法，",
 		"   兩邊都必須來自你自己這次呼叫過的工具結果。",
@@ -259,16 +262,24 @@ export async function runAgent(question, { onEvent = () => {}, db, history = [] 
 		onEvent({ type: "tool", ...call });
 	});
 
-	// build_component 成功時把圖表留下來，最後一起回前端掛上去
-	const origBuild = tools.find((t) => t.name === "build_component");
-	const wrapped = { ...origBuild, async execute(id, p) {
-		const r = await origBuild.execute(id, p);
-		if (r.details?.component?.ok && r.details.component.chartable !== false) {
-			components.push({ spec: p.spec, ...r.details.component });
-		}
-		return r;
-	} };
-	const toolList = tools.map((t) => (t.name === "build_component" ? wrapped : t));
+	// 會產出圖表的工具，成功時把圖留下來，最後一起回前端掛上去。
+	//
+	// 原本寫死只包 build_component。plot_correlation 走的是另一條路
+	// （它自己組 chart_data，不經過 ComponentSpec 編譯），所以這裡改成一份名單。
+	// spec 優先用工具自己回的那份：build_component 回的是 normalizeSpec 之後
+	// 的版本，比呼叫參數裡那份準；plot_correlation 的參數裡根本沒有 spec。
+	const EMITS_COMPONENT = new Set(["build_component", "plot_correlation"]);
+	const toolList = tools.map((t) => {
+		if (!EMITS_COMPONENT.has(t.name)) return t;
+		return { ...t, async execute(id, p) {
+			const r = await t.execute(id, p);
+			const c = r.details?.component;
+			if (c?.ok && c.chartable !== false) {
+				components.push({ spec: p?.spec, ...c });
+			}
+			return r;
+		} };
+	});
 
 	const { runAgentLoop } = await import("@earendil-works/pi-agent-core");
 	const { bedrockProviderModule } = await import("@earendil-works/pi-ai/bedrock-provider");

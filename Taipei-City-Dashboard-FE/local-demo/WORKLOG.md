@@ -560,3 +560,92 @@ live agent 走完整條路：
 - C 組 6 項：time 的 SQL 形狀與實際資料（不補零、照時序、時間格式、
   數列點數不足時指名是哪一個）
 - D 組 2 項：two_d / three_d 沒被改壞
+
+---
+
+## 9/13 散布圖：讓相關係數看得見
+
+`correlate_indicators` 算出 r=0.665，但畫出來是兩排長條圖。長條圖比的是各自
+的高低，看不出「配對」這件事；散布圖一個點一個行政區，離群的區一眼就看得到。
+這是我們的分析強項第一次有對應的圖。
+
+### 為什麼不走 ComponentSpec
+
+ComponentSpec 的形狀是「一個 x 欄位 + 多個 series」，表達不出「兩個指標當
+兩個座標軸」。硬塞要同時動 `validateSpec`、`compileSpec`、`orderProbeSQL`
+三處，還會撞上 `generateComponent` 無條件執行的 `orderProbeSQL` 探測步驟
+（bubble 沒有類別軸，探測沒有意義）。
+
+而 `resolveSelector` 早就把需要的條件解析全做完了。所以改成獨立工具
+`plot_correlation`，**逐字共用 correlate_indicators 那組 where**——
+畫出來的點一定就是算 r 的那批資料，不是另外查一次可能不同的東西。
+
+測試裡直接驗這件事：從散布圖的 23 個點自己重算一次 Pearson，
+要等於工具回報的 0.665。對不上就代表兩邊查到的不是同一批。
+
+### 三個必須踩對的前端契約
+
+**一個行政區一個 series。** 看起來浪費（23 個 series 各一個點），但這是
+BubbleChart 的硬性契約：tooltip 標題讀的是 **series 名稱**
+（`BubbleChart.vue:158`、`:278`），不是點本身。做成「一個 series 裝 23 個點」
+的話，每個泡泡 hover 起來標題都一樣，行政區的身分整個消失。
+legend 是關掉的（`:153`），所以 23 個 series 不會洗版。
+
+**`categories` 是陣列，`unit` 是 JSON 字串。** 元件用數字索引讀
+`categories[0]/[1]/[2]`，單位讀 `parsedUnit?.x/.y/.z`——後者是
+`JSON.parse(chart_config.unit)` 的結果，給普通字串會 parse 失敗退回原字串，
+然後 `.x` 是 undefined，tooltip 就沒有單位。
+
+**必須 INNER JOIN，不可以補零。** 人口有 29 區、租金只有 27 區。
+`three_d` 那套 `LEFT JOIN + coalesce(m, 0)` 在長條圖上只是少一根，
+在散布圖上是**造出一個 (x, 0) 的假離群點**，既壓扁 y 軸又製造不存在的相關性。
+這是 three_d 契約與 bubble 契約方向相反的地方。
+
+### 差點中的地雷
+
+`CHARTABLE.maxSeries = 8`。bubble 是 23 個 series，如果套用 three_d 的判準
+就會 `chartable: false`，然後 `agent.js` 的 `chartable !== false` 不成立，
+**組件根本不會被推到前端，而且畫面上不會有任何錯誤訊息**。
+`plot_correlation` 自己組 chart_data、不經過 `generateComponent`，所以繞開了。
+
+### z 軸與兩個小修
+
+沒有第三個維度，z 對每個泡泡都一樣。ApexCharts 算半徑是
+`n = zRange / gridHeight * 16`，z 全相同時 zRange=0 → n=0 → falsy → n=1，
+於是半徑等於 z 本身，再夾進 `[5, 30]`。所以 `BUBBLE_Z = 12` 直接就是像素半徑。
+瀏覽器實測 23 顆圓的 `r` 屬性全部是 12，推導正確。
+
+順手修了 `BubbleChart.vue` 兩個地方：
+
+- z 那列加 `v-if="tooltip.categories[2]"`。泡泡大小固定時一直顯示
+  「：12」是沒有意義的數字。
+- x 軸刻度在資料全是整數時不顯示小數。刻度是 ApexCharts 把 `[min, max]`
+  均分出來的，本來會出現「24,359.64 人」——讀起來像精確到小數點後兩位的
+  統計，其實只是刻度。
+
+### 瀏覽器實測
+
+走完整條 UI 流程（開側邊欄 → 點建議問題 → 送出）：
+
+```
+23 個 series、23 顆半徑 12px 的泡泡
+x 軸 1,283 – 116,668（人）  y 軸 4k – 28k（元/月）
+沒有 Infinity / NaN，console 零錯誤
+tooltip：板橋區 / 18–35 歲青年人口（人）：106062 人 / 租金中位數（元/月）：19900 元/月
+```
+
+模型的答案還自己補了一句「相關不等於因果，也可能是都市化程度這個共同因素
+同時驅動兩者」——這種統計素養的警語是工具把 r 與 strength 算好之後才出現的。
+
+### 測試
+
+`199` 項全數通過（182 + 新增 17）。新增的都在 `xdomain.test.mjs` 的 F 組，
+跟 correlate 的測試放在一起，因為要驗的正是兩者的一致性。
+
+### 還沒做的
+
+- 第三個維度（泡泡大小接第三個指標）。SQL 只要多一個 CTE，但參數變多、
+  模型挑錯的機會也變多，先不做。
+- BubbleChart 讀 `map_config.color`，其餘 21 個圖表元件都讀
+  `chart_config.color`，看起來是上游的複製貼上錯誤。目前泡泡用的是
+  ApexCharts 預設調色盤。不影響正確性，沒有動它。

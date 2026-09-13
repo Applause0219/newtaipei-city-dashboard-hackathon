@@ -26,6 +26,20 @@ const result = (obj, details = {}) => ({
 	details,
 });
 
+/** 散布圖至少要幾個點才看得出形狀。低於這個數字寧可不畫。 */
+const MIN_SCATTER = 5;
+
+/**
+ * 泡泡半徑（像素）。
+ *
+ * 我們沒有第三個維度，z 對每個泡泡都一樣。ApexCharts 算半徑的方式是
+ * `n = zRange / gridHeight * 16`，z 全部相同時 zRange=0 → n=0 → falsy → n=1，
+ * 於是半徑就等於 z 本身，再夾進 [minBubbleRadius=5, maxBubbleRadius=30]
+ * （BubbleChart.vue:144-145）。所以這個數字直接就是像素半徑，
+ * 12 是讀得清楚又不會互相蓋住的大小。
+ */
+const BUBBLE_Z = 12;
+
 /**
  * 建立工具集。
  * @param {object} catalog   loadCatalog() 的結果
@@ -364,6 +378,142 @@ export function buildTools(catalog, onCall = () => {}) {
 		},
 	};
 
+	// ── 3b-2. 把相關性畫成散布圖 ──
+	//
+	// correlate_indicators 算出 r=0.665，但畫出來是兩排長條圖——那是呈現
+	// 相關性**最差**的方式。長條圖比的是各自的高低，看不出「配對」這件事；
+	// 散布圖一個點一個行政區，離群的區一眼就看得到。
+	//
+	// 為什麼不走 ComponentSpec：它的形狀是「一個 x 欄位 + 多個 series」，
+	// 表達不出「兩個指標當兩個座標軸」。硬塞要同時動 validateSpec、
+	// compileSpec、orderProbeSQL 三處，而 resolveSelector 早就把需要的
+	// 條件解析全做完了。
+	//
+	// 取樣與 correlate_indicators **逐字共用同一組 where**，所以畫出來的點
+	// 一定就是算相關係數的那批資料，不是另外查一次可能不同的東西。
+	const plotCorrelation = {
+		name: "plot_correlation",
+		label: "畫散布圖",
+		description:
+			"把兩個指標畫成散布圖，一個泡泡一個行政區（x 軸一個指標，y 軸另一個）。\n" +
+			"**算完 correlate_indicators 之後一定要再呼叫這個**，讓使用者看得到相關係數長什麼樣子。\n" +
+			"取樣條件與 correlate_indicators 完全相同，所以點的位置就是算 r 用的那批數字。",
+		parameters: {
+			type: "object",
+			properties: {
+				a: SELECTOR_SCHEMA,
+				b: SELECTOR_SCHEMA,
+				label_a: { type: "string", description: "x 軸的中文說明，例如「青年人口（15-29歲）」" },
+				label_b: { type: "string", description: "y 軸的中文說明，例如「租金中位數」" },
+				name: { type: "string", description: "組件名稱，12 字以內" },
+			},
+			required: ["a", "b"],
+		},
+		async execute(_id, p) {
+			const ra = await resolveSelector(p?.a, { forDistrict: true });
+			if (ra.error) { note("plot_correlation", { a: p?.a?.indicator_id }, "A 被擋下"); return result({ side: "a", ...ra }); }
+			const rb = await resolveSelector(p?.b, { forDistrict: true });
+			if (rb.error) { note("plot_correlation", { b: p?.b?.indicator_id }, "B 被擋下"); return result({ side: "b", ...rb }); }
+
+			// INNER JOIN 是強制的，不可以照 three_d 那樣 LEFT JOIN 補零。
+			//
+			// 兩個指標涵蓋的行政區常常不一樣（人口 29 區、租金 27 區）。
+			// 補零在長條圖上只是少一根，在散布圖上是**造出一個 (x, 0) 的假點**，
+			// 既壓扁 y 軸又製造不存在的相關性。
+			const sql = `
+				WITH a AS (SELECT area_name, sum(value) v FROM public.youth_fact_named ${ra.where} GROUP BY 1),
+				     b AS (SELECT area_name, sum(value) v FROM public.youth_fact_named ${rb.where} GROUP BY 1)
+				SELECT a.area_name AS name,
+				       round(a.v)::float8 AS x,
+				       round(b.v)::float8 AS y
+				FROM a JOIN b USING (area_name)
+				ORDER BY a.v DESC`;
+			const rows = await query(sql);
+
+			if (rows.length < MIN_SCATTER) {
+				note("plot_correlation",
+					{ a: ra.applied.indicator_id, b: rb.applied.indicator_id },
+					`只有 ${rows.length} 個區配對得起來，畫不出散布圖`);
+				return result({
+					error: `只有 ${rows.length} 個行政區同時有這兩個指標的資料，少於 ${MIN_SCATTER} 個看不出散布形狀`,
+					a: ra.applied, b: rb.applied,
+					hint: "兩個指標的涵蓋範圍差太多。換一個涵蓋較廣的指標，或改用 compare_indicators 看比例",
+				});
+			}
+
+			const unitOf = (ind, ds) =>
+				catalog.youthDatasets?.[ds]?.indicators?.[ind]?.unit || "";
+			const uA = unitOf(ra.applied.indicator_id, ra.applied.dataset_id);
+			const uB = unitOf(rb.applied.indicator_id, rb.applied.dataset_id);
+			const labA = String(p?.label_a || ra.applied.indicator_id);
+			const labB = String(p?.label_b || rb.applied.indicator_id);
+
+			// 一個行政區一個 series，每個 series 只有一個點。
+			//
+			// 看起來浪費，但這是 BubbleChart 的硬性契約：tooltip 的標題讀的是
+			// **series 名稱**（BubbleChart.vue:158、278），不是點本身。
+			// 做成「一個 series 裝 23 個點」的話，每個泡泡 hover 起來標題都一樣，
+			// 行政區的身分整個消失——那張圖就沒有意義了。
+			// legend 是關掉的（BubbleChart.vue:153），所以 23 個 series 不會洗版。
+			const data = rows.map((r) => ({
+				name: String(r.name),
+				data: [{ x: Number(r.x), y: Number(r.y), z: BUBBLE_Z }],
+			}));
+
+			const chart = {
+				data,
+				// categories 是**陣列**，元件用數字索引讀 [0]/[1]/[2]
+				// （BubbleChart.vue:280/286/291）。第三個留空，z 是固定值，
+				// 元件會把那一列整個藏起來。
+				categories: [labA, labB, ""],
+				status: "success",
+			};
+
+			const xs = rows.map((r) => Number(r.x));
+			const ys = rows.map((r) => Number(r.y));
+			const rng = (v) => ({ min: Math.min(...v), max: Math.max(...v) });
+
+			note("plot_correlation",
+				{ a: ra.applied.indicator_id, b: rb.applied.indicator_id },
+				`${rows.length} 個區的散布圖`);
+
+			return result(
+				{
+					plotted: rows.length,
+					a: { ...ra.applied, label: labA, unit: uA, ...rng(xs) },
+					b: { ...rb.applied, label: labB, unit: uB, ...rng(ys) },
+					note: "圖已經畫出來了，不要再把這些座標抄進文字答案裡——"
+						+ "要引用數字請用 query_indicator 或 compare_indicators 的結果",
+				},
+				{
+					component: {
+						ok: true, chartable: true, sql, chart,
+						stats: { rows: rows.length, categories: rows.length,
+							series: rows.length, table: "youth_fact_named",
+							period: `${ra.applied.period} / ${rb.applied.period}` },
+						spec: {
+							index: `scatter_${ra.applied.indicator_id}_${rb.applied.indicator_id}`.slice(0, 60),
+							name: String(p?.name || `${labA} vs ${labB}`).slice(0, 40),
+							city: "metrotaipei",
+							query_type: "bubble",
+							short_desc: `各行政區的${labA}與${labB}對照，一個泡泡一個區`,
+							long_desc: `x 軸：${labA}（${ra.applied.indicator_id}，${ra.applied.period}）`
+								+ `\ny 軸：${labB}（${rb.applied.indicator_id}，${rb.applied.period}）`
+								+ `\n只畫兩邊都有資料的 ${rows.length} 個行政區，沒有補零。`,
+							chart: {
+								types: ["BubbleChart"],
+								// unit 必須是可 JSON.parse 的字串：元件讀 parsedUnit?.x / .y
+								// （BubbleChart.vue:33-39），給普通字串會 parse 失敗、
+								// 退回原字串，然後 .x 是 undefined，tooltip 就沒有單位。
+								unit: JSON.stringify({ x: uA, y: uB, z: "" }),
+							},
+						},
+					},
+					n: rows.length,
+				});
+		},
+	};
+
 	// ── 3c. 兩個指標相除：比例與排名一律 SQL 算完 ──
 	//
 	// 同一批測試裡，「租金中位數佔平均所得多少」那題：模型每個百分比單獨算都對，
@@ -596,7 +746,7 @@ export function buildTools(catalog, onCall = () => {}) {
 
 	return {
 		tools: [searchIndicators, inspectIndicator, queryIndicator,
-			correlateIndicators, compareIndicators, comparePeriods,
+			correlateIndicators, plotCorrelation, compareIndicators, comparePeriods,
 			buildComponent, listOfficial, listDomains],
 		trace,
 	};
