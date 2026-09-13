@@ -16,3 +16,8 @@ def test_search_terms_expand_housing_synonyms():
     assert "租屋" in terms
     assert "rental" in terms
     assert "burden" in terms
+
+
+def test_search_terms_expand_rent_wording():
+    assert "rental" in search_terms("租金趨勢")
+    assert "rental" in search_terms("各區房租比較")

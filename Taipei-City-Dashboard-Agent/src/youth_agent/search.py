@@ -9,6 +9,8 @@ _SEARCH_ALIASES: dict[str, tuple[str, ...]] = {
     "居住": ("住宅", "housing"),
     "租屋": ("rental", "租賃"),
     "租賃": ("rental",),
+    "租金": ("rental",),
+    "房租": ("rental",),
     "房價": ("住宅", "price"),
     "負擔": ("burden",),
     "房貸": ("loan",),
